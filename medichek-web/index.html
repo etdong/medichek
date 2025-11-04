@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Medichek - Medication Application Tracker</title>
+    <link rel="stylesheet" href="./static/style.css">
+    
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <!-- Tesseract.js for OCR -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    
+    <!-- Medichek Configuration -->
+    <script src="./static/config.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Status Bar -->
+        <div class="status-panel">
+            <div class="status-item">
+                <span class="status-label">Server:</span>
+                <span id="server-status" class="status-badge checking">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Session:</span>
+                <span id="session-id" class="status-value">None</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Step:</span>
+                <span id="current-step" class="status-value">0/5</span>
+            </div>
+        </div>
+
+        <!-- Video Feed Container -->
+        <div class="video-container">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="output-canvas"></canvas>
+            
+            <!-- Step Status Overlay -->
+            <div class="step-status-overlay" id="step-status-overlay">
+                <div id="step-instruction" class="step-instruction">Ready to begin</div>
+                <div id="step-progress" class="step-progress"></div>
+            </div>
+            
+            <!-- Capture Preview -->
+            <div id="capture-preview" class="capture-preview">
+                <div class="preview-content">
+                    <h3>Frame Captured</h3>
+                    <canvas id="preview-canvas"></canvas>
+                    <div id="ocr-result" class="ocr-result"></div>
+                    <button id="close-preview" class="btn btn-secondary">Close</button>
+                </div>
+            </div>
+            
+            <!-- Countdown Overlay -->
+            <div id="countdown-overlay" class="countdown-overlay">
+                <div id="countdown-number" class="countdown-number">3</div>
+            </div>
+        </div>
+
+        <!-- Action Button Container -->
+        <div class="action-button-container">
+            <button id="start-tracking" class="btn btn-primary">Start Tracking</button>
+            <button id="next-step" class="btn btn-primary" style="display: none;">Next Step</button>
+            <button id="capture-frame" class="btn btn-primary" style="display: none;">Capture Frame</button>
+            <button id="submit-analysis" class="btn btn-success" style="display: none;">Submit Analysis</button>
+        </div>
+    </div>
+
+    <script src="./static/script.js"></script>
+</body>
+</html>

@@ -1,6 +1,0 @@
-# Client-side requirements
-# Server is located in a separate directory
-# This folder contains only the client-side webpage
-
-# Development server with live reload
-livereload>=2.6.3
