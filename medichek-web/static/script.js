@@ -36,6 +36,15 @@ let handDetected = false;
 let palmUp = false;
 let handLandmarks = null;
 
+// Step 4: Palm detection tracking
+let palmDetectionState = {
+    detected: false,
+    startTime: null,
+    totalTime: 0,
+    completed: false
+};
+const PALM_DETECTION_REQUIRED = 2000; // 2 seconds in milliseconds
+
 // MediaPipe Face Mesh (for Step 5)
 let faceMesh = null;
 let faceMeshLandmarks = null;
@@ -56,6 +65,19 @@ let canvasCtx = null;
 let ocrRecognized = false;
 let capturedImageData = null;
 
+// Video recording state
+let mediaRecorder = null;
+let recordedChunks = [];
+let currentStepRecording = null;
+let stepRecordings = {
+    step1: null,
+    step2: null,
+    step3: null,
+    step4: null,
+    step5: null
+};
+let recordingConsent = false;
+
 // DOM elements
 const serverStatus = document.getElementById('server-status');
 const sessionIdElement = document.getElementById('session-id');
@@ -75,6 +97,10 @@ const closePreviewBtn = document.getElementById('close-preview');
 const countdownOverlay = document.getElementById('countdown-overlay');
 const countdownNumber = document.getElementById('countdown-number');
 
+// Warning toast
+const warningToast = document.getElementById('warning-toast');
+let toastTimeout = null;
+
 // Utility functions
 // Utility functions (no-op stubs for removed UI elements)
 function addLog(message, type = 'info') {
@@ -92,6 +118,36 @@ function updateServerStatus(status) {
     serverStatus.className = 'status-badge ' + 
         (status === 'Connected' ? 'connected' : 
          status === 'Checking...' ? 'checking' : 'disconnected');
+}
+
+function showWarningToast(message, duration = 3000) {
+    // Update message if provided
+    if (message) {
+        const toastMessage = warningToast.querySelector('.toast-message');
+        if (toastMessage) {
+            toastMessage.textContent = message;
+        }
+    }
+    
+    // Clear any existing timeout
+    if (toastTimeout) {
+        clearTimeout(toastTimeout);
+    }
+    
+    // Show toast
+    warningToast.classList.add('show');
+    
+    // Auto-hide after duration
+    toastTimeout = setTimeout(() => {
+        warningToast.classList.remove('show');
+    }, duration);
+}
+
+function hideWarningToast() {
+    if (toastTimeout) {
+        clearTimeout(toastTimeout);
+    }
+    warningToast.classList.remove('show');
 }
 
 function generateSessionId() {
@@ -139,11 +195,20 @@ function updateSessionUI() {
         if (stepInstruction) stepInstruction.textContent = 'Capture Product Label';
         if (stepProgress) stepProgress.textContent = ocrRecognized ? 'Product recognized ✓' : 'Show "TEST" label to camera';
     } else if (analysisSession.currentStep === 4) {
-        // Step 4: Hand palm detection
+        // Step 4: Hand palm detection (2 seconds required)
         nextStepBtn.style.display = 'block';
-        nextStepBtn.disabled = !palmUp;
+        nextStepBtn.disabled = !palmDetectionState.completed;
         if (stepInstruction) stepInstruction.textContent = 'Show Palm';
-        if (stepProgress) stepProgress.textContent = palmUp ? 'Palm detected ✓' : 'Show your palm with fingers down';
+        if (stepProgress) {
+            if (palmDetectionState.completed) {
+                stepProgress.textContent = 'Palm detection complete ✓';
+            } else if (palmDetectionState.detected && palmDetectionState.totalTime > 0) {
+                const progress = Math.min(100, Math.round((palmDetectionState.totalTime / PALM_DETECTION_REQUIRED) * 100));
+                stepProgress.textContent = `Hold palm steady: ${progress}%`;
+            } else {
+                stepProgress.textContent = 'Show your palm with fingers down';
+            }
+        }
     } else if (analysisSession.currentStep === 5) {
         // Step 5: Face rubbing
         const allAreasRubbed = faceRubbingState.forehead.rubbed && 
@@ -224,7 +289,122 @@ async function checkServer() {
     }
 }
 
+// Video recording functions
+function startStepRecording(stepNumber) {
+    if (!videoStream || !recordingConsent) {
+        addLog('⚠️ Cannot start recording: no video stream or consent', 'warning');
+        return;
+    }
+    
+    try {
+        // Stop any existing recording
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            stopStepRecording();
+        }
+        
+        // Reset chunks
+        recordedChunks = [];
+        currentStepRecording = stepNumber;
+        
+        // Create MediaRecorder with the video stream
+        const options = { mimeType: 'video/webm;codecs=vp9' };
+        
+        // Fallback to vp8 if vp9 not supported
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options.mimeType = 'video/webm;codecs=vp8';
+        }
+        
+        // Fallback to default if webm not supported
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options.mimeType = 'video/webm';
+        }
+        
+        mediaRecorder = new MediaRecorder(videoStream, options);
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
+        };
+        
+        mediaRecorder.onstop = () => {
+            if (recordedChunks.length > 0) {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                stepRecordings[`step${currentStepRecording}`] = blob;
+                addLog(`✅ Step ${currentStepRecording} recording saved (${(blob.size / 1024 / 1024).toFixed(2)} MB)`, 'success');
+            }
+        };
+        
+        mediaRecorder.start(100); // Collect data every 100ms
+        addLog(`🎥 Recording started for Step ${stepNumber}`, 'info');
+        
+    } catch (error) {
+        addLog(`❌ Failed to start recording: ${error.message}`, 'error');
+        console.error('Recording error:', error);
+    }
+}
+
+function stopStepRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        addLog(`⏹️ Recording stopped for Step ${currentStepRecording}`, 'info');
+    }
+}
+
+function downloadAllRecordings() {
+    addLog('📥 Downloading all step recordings...', 'info');
+    
+    let downloadCount = 0;
+    
+    for (let i = 1; i <= 5; i++) {
+        const stepKey = `step${i}`;
+        const blob = stepRecordings[stepKey];
+        
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${analysisSession.sessionId}_step${i}_${new Date().toISOString().replace(/:/g, '-')}.webm`;
+            document.body.appendChild(a);
+            
+            // Stagger downloads to avoid browser blocking
+            setTimeout(() => {
+                a.click();
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                }, 100);
+            }, downloadCount * 500);
+            
+            downloadCount++;
+        }
+    }
+    
+    if (downloadCount > 0) {
+        addLog(`✅ Downloading ${downloadCount} video recordings`, 'success');
+    } else {
+        addLog('⚠️ No recordings found to download', 'warning');
+    }
+}
+
 async function startTracking() {
+    // Ask for recording consent
+    const consent = confirm(
+        'This application will record video of each step for quality assurance.\n\n' +
+        'The videos will be saved to your device at the end of the session.\n\n' +
+        'Do you consent to video recording?'
+    );
+    
+    if (!consent) {
+        addLog('❌ Video recording consent denied. Cannot proceed.', 'error');
+        alert('Video recording is required to proceed with the tracking session.');
+        return;
+    }
+    
+    recordingConsent = true;
+    addLog('✅ Video recording consent granted', 'success');
+    
     // Initialize client-side session
     analysisSession = {
         sessionId: generateSessionId(),
@@ -237,7 +417,8 @@ async function startTracking() {
         metadata: {
             userAgent: navigator.userAgent,
             screenResolution: `${window.screen.width}x${window.screen.height}`,
-            source: 'web-client'
+            source: 'web-client',
+            recordingConsent: true
         },
         stepTimings: {
             step1: { startTime: Date.now(), endTime: null, duration: 0 },
@@ -255,6 +436,11 @@ async function startTracking() {
     
     // Enable camera
     await enableCamera();
+    
+    // Start recording step 1
+    if (recordingConsent && videoStream) {
+        startStepRecording(1);
+    }
     
     updateResponse({
         message: 'Session started - tracking locally',
@@ -285,9 +471,9 @@ function nextStep() {
         return;
     }
     
-    // Step 4 requires hand palm detection
-    if (analysisSession.currentStep === 4 && !palmUp) {
-        addLog('⚠️ Please show your palm to the camera with fingers pointing down', 'warning');
+    // Step 4 requires palm detection for 2 seconds
+    if (analysisSession.currentStep === 4 && !palmDetectionState.completed) {
+        addLog('⚠️ Please show your palm to the camera with fingers pointing down for 2 seconds', 'warning');
         return;
     }
     
@@ -311,6 +497,11 @@ function nextStep() {
             (currentTime - analysisSession.stepTimings[stepKey].startTime) / 1000; // in seconds
     }
     
+    // Stop recording for current step
+    if (recordingConsent) {
+        stopStepRecording();
+    }
+    
     // Log step completion
     if (analysisSession.currentStep === 1) {
         addLog('✅ Step 1 completed: Camera feed established', 'success');
@@ -320,9 +511,9 @@ function nextStep() {
         addLog('📦 Step 3: Capture a frame showing product label with "TEST"', 'info');
     } else if (analysisSession.currentStep === 3) {
         addLog('✅ Step 3 completed: Product label recognized', 'success');
-        addLog('✋ Step 4: Show your palm to the camera with fingers pointing down', 'info');
+        addLog('✋ Step 4: Show your palm to the camera with fingers pointing down for 2 seconds', 'info');
     } else if (analysisSession.currentStep === 4) {
-        addLog('✅ Step 4 completed: Hand palm detected', 'success');
+        addLog('✅ Step 4 completed: Hand palm detected for 2 seconds', 'success');
         addLog('💆 Step 5: Rub your forehead, left cheek, and right cheek with your hand (5 seconds each)', 'info');
     } else if (analysisSession.currentStep === 5) {
         addLog('✅ Step 5 completed: All face areas rubbed', 'success');
@@ -332,10 +523,27 @@ function nextStep() {
     analysisSession.currentStep++;
     addLog(`📍 Moving to step ${analysisSession.currentStep}/${analysisSession.totalSteps}`);
     
+    // Reset step-specific states when entering a new step
+    if (analysisSession.currentStep === 4) {
+        // Reset palm detection state when entering step 4
+        palmDetectionState.detected = false;
+        palmDetectionState.startTime = null;
+        palmDetectionState.totalTime = 0;
+        palmDetectionState.completed = false;
+    }
+    
     // Start timing for next step
     const nextStepKey = `step${analysisSession.currentStep}`;
     if (analysisSession.stepTimings[nextStepKey]) {
         analysisSession.stepTimings[nextStepKey].startTime = currentTime;
+    }
+    
+    // Start recording for next step
+    if (recordingConsent && analysisSession.currentStep <= analysisSession.totalSteps) {
+        // Small delay to ensure clean transition
+        setTimeout(() => {
+            startStepRecording(analysisSession.currentStep);
+        }, 100);
     }
     
     // Record tracking data with face position
@@ -363,6 +571,12 @@ async function submitAnalysis() {
         return;
     }
     
+    // Stop recording step 5
+    if (recordingConsent) {
+        stopStepRecording();
+        addLog('🎥 All recordings completed', 'success');
+    }
+    
     // End timing for step 5
     const currentTime = Date.now();
     if (analysisSession.stepTimings.step5.startTime && !analysisSession.stepTimings.step5.endTime) {
@@ -380,68 +594,26 @@ async function submitAnalysis() {
         total_steps: analysisSession.totalSteps,
         completed_steps: analysisSession.currentStep,
         
-        // Step-by-step timing data
+        // Step-by-step timing data (duration only)
         step_timings: {
-            step1_camera_activation: {
-                duration_seconds: analysisSession.stepTimings.step1.duration,
-                start_time: new Date(analysisSession.stepTimings.step1.startTime).toISOString(),
-                end_time: analysisSession.stepTimings.step1.endTime ? new Date(analysisSession.stepTimings.step1.endTime).toISOString() : null
-            },
-            step2_face_centering: {
-                duration_seconds: analysisSession.stepTimings.step2.duration,
-                start_time: analysisSession.stepTimings.step2.startTime ? new Date(analysisSession.stepTimings.step2.startTime).toISOString() : null,
-                end_time: analysisSession.stepTimings.step2.endTime ? new Date(analysisSession.stepTimings.step2.endTime).toISOString() : null
-            },
-            step3_ocr_capture: {
-                duration_seconds: analysisSession.stepTimings.step3.duration,
-                start_time: analysisSession.stepTimings.step3.startTime ? new Date(analysisSession.stepTimings.step3.startTime).toISOString() : null,
-                end_time: analysisSession.stepTimings.step3.endTime ? new Date(analysisSession.stepTimings.step3.endTime).toISOString() : null
-            },
-            step4_palm_detection: {
-                duration_seconds: analysisSession.stepTimings.step4.duration,
-                start_time: analysisSession.stepTimings.step4.startTime ? new Date(analysisSession.stepTimings.step4.startTime).toISOString() : null,
-                end_time: analysisSession.stepTimings.step4.endTime ? new Date(analysisSession.stepTimings.step4.endTime).toISOString() : null
-            },
-            step5_face_rubbing: {
-                duration_seconds: analysisSession.stepTimings.step5.duration,
-                start_time: analysisSession.stepTimings.step5.startTime ? new Date(analysisSession.stepTimings.step5.startTime).toISOString() : null,
-                end_time: analysisSession.stepTimings.step5.endTime ? new Date(analysisSession.stepTimings.step5.endTime).toISOString() : null,
-                // Detailed face rubbing data
-                rubbing_details: {
-                    forehead: {
-                        time_spent_seconds: faceRubbingState.forehead.totalTime / 1000,
-                        completed: faceRubbingState.forehead.rubbed
-                    },
-                    left_cheek: {
-                        time_spent_seconds: faceRubbingState.leftSide.totalTime / 1000,
-                        completed: faceRubbingState.leftSide.rubbed
-                    },
-                    right_cheek: {
-                        time_spent_seconds: faceRubbingState.rightSide.totalTime / 1000,
-                        completed: faceRubbingState.rightSide.rubbed
-                    },
-                    total_rubbing_time_seconds: (faceRubbingState.forehead.totalTime + 
-                                                 faceRubbingState.leftSide.totalTime + 
-                                                 faceRubbingState.rightSide.totalTime) / 1000,
-                    all_areas_completed: faceRubbingState.forehead.rubbed && 
-                                       faceRubbingState.leftSide.rubbed && 
-                                       faceRubbingState.rightSide.rubbed
-                }
+            step1_camera_activation_seconds: analysisSession.stepTimings.step1.duration,
+            step2_face_centering_seconds: analysisSession.stepTimings.step2.duration,
+            step3_ocr_capture_seconds: analysisSession.stepTimings.step3.duration,
+            step4_palm_detection_seconds: analysisSession.stepTimings.step4.duration,
+            step5_face_rubbing_seconds: analysisSession.stepTimings.step5.duration,
+            // Detailed face rubbing data for step 5
+            step5_rubbing_details: {
+                forehead_seconds: faceRubbingState.forehead.totalTime / 1000,
+                left_cheek_seconds: faceRubbingState.leftSide.totalTime / 1000,
+                right_cheek_seconds: faceRubbingState.rightSide.totalTime / 1000,
+                total_rubbing_time_seconds: (faceRubbingState.forehead.totalTime + 
+                                             faceRubbingState.leftSide.totalTime + 
+                                             faceRubbingState.rightSide.totalTime) / 1000,
+                all_areas_completed: faceRubbingState.forehead.rubbed && 
+                                   faceRubbingState.leftSide.rubbed && 
+                                   faceRubbingState.rightSide.rubbed
             }
         },
-        
-        // Aggregate metrics from all tracking data
-        summary: {
-            total_frames_analyzed: analysisSession.trackingData.length,
-            face_detection_rate: analysisSession.trackingData.filter(d => d.detections.face.detected).length / analysisSession.trackingData.length,
-            hand_detection_rate: analysisSession.trackingData.filter(d => d.detections.hands.detected).length / analysisSession.trackingData.length,
-            product_detection_rate: analysisSession.trackingData.filter(d => d.detections.product.detected).length / analysisSession.trackingData.length,
-            average_application_accuracy: analysisSession.trackingData.reduce((sum, d) => sum + d.metrics.application_accuracy, 0) / analysisSession.trackingData.length
-        },
-        
-        // Detailed step-by-step data
-        step_data: analysisSession.trackingData,
-        
         // Session metadata
         metadata: analysisSession.metadata,
         
@@ -498,6 +670,14 @@ async function submitAnalysis() {
             localData: analysisResults,
             note: 'Analysis saved locally - you can retry submission later'
         });
+    } finally {
+        // Download all video recordings if consent was given
+        if (recordingConsent) {
+            addLog('📥 Preparing video downloads...', 'info');
+            setTimeout(() => {
+                downloadAllRecordings();
+            }, 500); // Small delay to ensure UI updates are complete
+        }
     }
 }
 
@@ -757,11 +937,16 @@ function checkFaceRubbing(faceLandmarks, handLandmarks) {
     // Forehead region: landmarks around 10 (top of face)
     const foreheadCenter = faceLandmarks[10];
     
-    // Left cheek: landmark 50 (mid-left cheek area)
-    const leftCheek = faceLandmarks[50];
+    // IMPORTANT: Camera is mirrored, so landmarks are flipped from user's perspective
+    // Landmark 50 is on user's right cheek (appears left in mirror)
+    // Landmark 280 is on user's left cheek (appears right in mirror)
+    // We swap them so the naming matches what the user sees in the mirror
     
-    // Right cheek: landmark 280 (mid-right cheek area)
-    const rightCheek = faceLandmarks[280];
+    // Left cheek (as user sees it in mirror): landmark 280
+    const leftCheek = faceLandmarks[280];
+    
+    // Right cheek (as user sees it in mirror): landmark 50
+    const rightCheek = faceLandmarks[50];
     
     // Get hand center position (average of fingertips)
     const handCenter = {
@@ -926,9 +1111,32 @@ function onHandsDetectionResults(results) {
         
         palmUp = fingersDown && palmFacing && palmUpright;
         
-        // Draw hand landmarks on Step 4
-        if (analysisSession.currentStep === 4 && canvasCtx) {
-            drawHandLandmarks(results);
+        // Track palm detection duration for Step 4
+        if (analysisSession.currentStep === 4 && !palmDetectionState.completed) {
+            if (palmUp) {
+                const currentTime = Date.now();
+                
+                if (!palmDetectionState.startTime) {
+                    palmDetectionState.startTime = currentTime;
+                    palmDetectionState.detected = true;
+                    addLog('👋 Palm detected! Hold for 2 seconds...', 'info');
+                }
+                
+                palmDetectionState.totalTime = currentTime - palmDetectionState.startTime;
+                
+                // Check if palm shown for required duration
+                if (palmDetectionState.totalTime >= PALM_DETECTION_REQUIRED && !palmDetectionState.completed) {
+                    palmDetectionState.completed = true;
+                    addLog('✅ Palm detection complete! You can proceed to next step', 'success');
+                }
+            } else {
+                // Reset timer if palm is no longer detected before completion
+                if (!palmDetectionState.completed) {
+                    palmDetectionState.startTime = null;
+                    palmDetectionState.totalTime = 0;
+                    palmDetectionState.detected = false;
+                }
+            }
         }
         
         // Update button state in real-time for step 4
@@ -939,6 +1147,13 @@ function onHandsDetectionResults(results) {
         handDetected = false;
         palmUp = false;
         handLandmarks = null;
+        
+        // Reset palm detection if hand is no longer detected (but keep completion state)
+        if (analysisSession.currentStep === 4 && !palmDetectionState.completed) {
+            palmDetectionState.startTime = null;
+            palmDetectionState.totalTime = 0;
+            palmDetectionState.detected = false;
+        }
         
         // Update button state in real-time for step 4
         if (analysisSession.currentStep === 4) {
@@ -996,9 +1211,12 @@ function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
     if (!canvasCtx || !faceLandmarks) return;
     
     // Define face region centers (mid-cheek landmarks for good separation)
+    // IMPORTANT: Camera is mirrored, so landmarks are flipped from user's perspective
+    // Landmark 50 is on user's right cheek (appears left in mirror)
+    // Landmark 280 is on user's left cheek (appears right in mirror)
     const foreheadCenter = faceLandmarks[10];
-    const leftCheek = faceLandmarks[50];  // Mid-left cheek
-    const rightCheek = faceLandmarks[280]; // Mid-right cheek
+    const leftCheek = faceLandmarks[280];  // Left cheek as user sees it in mirror
+    const rightCheek = faceLandmarks[50];  // Right cheek as user sees it in mirror
     
     const regions = [
         { name: 'forehead', center: foreheadCenter, state: faceRubbingState.forehead },
@@ -1042,25 +1260,6 @@ function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
             canvasCtx.stroke();
         }
     });
-    
-    // Draw hand landmarks
-    if (handLandmarks) {
-        canvasCtx.strokeStyle = '#00ffff';
-        canvasCtx.lineWidth = 2;
-        canvasCtx.fillStyle = '#00ffff';
-        
-        handLandmarks.forEach((landmark) => {
-            canvasCtx.beginPath();
-            canvasCtx.arc(
-                landmark.x * canvas.width,
-                landmark.y * canvas.height,
-                4,
-                0,
-                2 * Math.PI
-            );
-            canvasCtx.fill();
-        });
-    }
 }
 
 // Face detection results callback
@@ -1102,6 +1301,13 @@ function onFaceDetectionResults(results) {
         
         faceCentered = distanceFromCenterX < centerTolerance && distanceFromCenterY < centerTolerance;
         
+        // Show warning toast if face is not centered and we're past step 2
+        if (analysisSession.currentStep > 2 && analysisSession.isActive && !faceCentered) {
+            showWarningToast('Please keep your face in the center frame');
+        } else if (faceCentered && analysisSession.currentStep > 2) {
+            hideWarningToast();
+        }
+        
         // Only draw visualizations on Step 2
         if (analysisSession.currentStep === 2) {
             // Draw bounding box
@@ -1142,6 +1348,11 @@ function onFaceDetectionResults(results) {
     } else {
         faceDetected = false;
         faceCentered = false;
+        
+        // Show warning if face not detected and we're past step 2
+        if (analysisSession.currentStep > 2 && analysisSession.isActive) {
+            showWarningToast('Face not detected - please stay in frame');
+        }
         
         // Update button state in real-time for step 2
         if (analysisSession.currentStep === 2) {
