@@ -1,0 +1,6 @@
+pyproject.toml
+readme.md
+medichek_client.egg-info/PKG-INFO
+medichek_client.egg-info/SOURCES.txt
+medichek_client.egg-info/dependency_links.txt
+medichek_client.egg-info/top_level.txt

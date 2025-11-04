@@ -1,0 +1,48 @@
+Metadata-Version: 2.4
+Name: medichek-client
+Version: 0.1.0
+Summary: Medichek client package (patient-side)
+Author: medichek
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+## medichek (client package)
+
+This folder holds the Python client package and helper files for the patient-side application.
+
+Running client & server together
+
+The simplest way to run the server and client in tandem is to open two PowerShell windows and run each component in its own virtual environment.
+
+1) Start the server (in one PowerShell window):
+
+```powershell
+cd "c:\Users\songguopeng\Documents\projects\medichek project\medichek-server"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver 8000
+```
+
+2) Start the client (in a second PowerShell window):
+
+```powershell
+cd "c:\Users\songguopeng\Documents\projects\medichek project\medichek\medichek-client"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m client_app.main
+```
+
+Optional: launch both in new windows from a script (one-liners). Replace paths if different on your machine.
+
+```powershell
+Start-Process powershell -ArgumentList '-NoExit','cd "c:\Users\songguopeng\Documents\projects\medichek project\medichek-server"; .\.venv\Scripts\Activate.ps1; python manage.py runserver 8000'
+Start-Process powershell -ArgumentList '-NoExit','cd "c:\Users\songguopeng\Documents\projects\medichek project\medichek\medichek-client"; .\.venv\Scripts\Activate.ps1; python -m client_app.main'
+```
+
+Notes
+- Server runs at http://127.0.0.1:8000 by default. The client stub contacts no server yet, but future work will POST session data and captures to the server API.
+- If you change ports, update the client code or pass the server URL via environment variables or CLI.
+a remote check in software for patients with medications
