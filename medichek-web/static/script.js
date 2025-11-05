@@ -271,7 +271,7 @@ function updateSessionUI() {
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         // Hide next step button - will auto-advance when palm detection completes
-        if (stepInstruction) stepInstruction.textContent = 'Step 2: Show product in hand';
+        if (stepInstruction) stepInstruction.textContent = 'Step 2: Show product on hand/fingers';
         if (stepProgress) {
             if (palmDetectionState.completed) {
                 stepProgress.textContent = 'Detection complete ✓ - Advancing...';
@@ -279,7 +279,7 @@ function updateSessionUI() {
                 const progress = Math.min(100, Math.round((palmDetectionState.totalTime / PALM_DETECTION_REQUIRED) * 100));
                 stepProgress.textContent = `Hold hand steady: ${progress}%`;
             } else {
-                stepProgress.textContent = 'Show the product clearly in your hand';
+                stepProgress.textContent = 'Show the product clearly on hand/palm/fingers';
             }
         }
     } else if (analysisSession.currentStep === 3) {
@@ -1211,19 +1211,23 @@ async function captureFrame() {
     const minDimension = Math.min(webcam.videoWidth, webcam.videoHeight);
     const squareSize = minDimension * OCR_CAPTURE_AREA.sizePercent;
     
-    // Center the square
-    const captureX = (webcam.videoWidth - squareSize) / 2;
-    const captureY = (webcam.videoHeight - squareSize) / 2;
-    const captureWidth = squareSize;
-    const captureHeight = squareSize;
+    // Add padding to capture more area around the OCR capture zone (20% padding)
+    const paddingPercent = 0.40;
+    const padding = squareSize * paddingPercent;
     
-    // Capture only the designated area (un-mirrored for OCR)
+    // Center the square with padding
+    const captureX = Math.max(0, (webcam.videoWidth - squareSize) / 2 - padding);
+    const captureY = Math.max(0, (webcam.videoHeight - squareSize) / 2 - padding);
+    const captureWidth = Math.min(squareSize + (padding * 2), webcam.videoWidth - captureX);
+    const captureHeight = Math.min(squareSize + (padding * 2), webcam.videoHeight - captureY);
+    
+    // Capture the padded area (un-mirrored for OCR)
     const captureCanvas = document.createElement('canvas');
     captureCanvas.width = captureWidth;
     captureCanvas.height = captureHeight;
     const ctx = captureCanvas.getContext('2d');
     
-    // Draw only the capture area from video WITHOUT mirroring (correct orientation for OCR)
+    // Draw the padded capture area from video WITHOUT mirroring (correct orientation for OCR)
     ctx.drawImage(
         webcam,
         captureX, captureY, captureWidth, captureHeight,  // Source rectangle
@@ -1968,6 +1972,24 @@ function drawHandLandmarks(results) {
 function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
     if (!canvasCtx || !faceLandmarks) return;
     
+    // Calculate face mesh bounding box to determine face size
+    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+    faceLandmarks.forEach(landmark => {
+        minX = Math.min(minX, landmark.x);
+        maxX = Math.max(maxX, landmark.x);
+        minY = Math.min(minY, landmark.y);
+        maxY = Math.max(maxY, landmark.y);
+    });
+    
+    // Calculate face width in pixels
+    const faceWidth = (maxX - minX) * canvas.width;
+    
+    // Define baseline face width (typical face at medium distance)
+    const baselineFaceWidth = 200;
+    
+    // Calculate scale factor based on face size
+    const scaleFactor = faceWidth / baselineFaceWidth;
+    
     // Define face region centers (mid-cheek landmarks for good separation)
     // IMPORTANT: Camera is mirrored, so landmarks are flipped from user's perspective
     // Landmark 50 is on user's right cheek (appears left in mirror)
@@ -1986,7 +2008,8 @@ function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
     regions.forEach(region => {
         const x = region.center.x * canvas.width;
         const y = region.center.y * canvas.height;
-        const radius = 50;
+        const baseRadius = 50;
+        const radius = baseRadius * scaleFactor;
         
         // Set color based on rubbing state
         if (region.state.rubbed) {
@@ -2014,7 +2037,7 @@ function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
             canvasCtx.strokeStyle = '#00ff00';
             canvasCtx.lineWidth = 5;
             canvasCtx.beginPath();
-            canvasCtx.arc(x, y, radius + 10, -Math.PI / 2, -Math.PI / 2 + (2 * Math.PI * progress));
+            canvasCtx.arc(x, y, radius + (10 * scaleFactor), -Math.PI / 2, -Math.PI / 2 + (2 * Math.PI * progress));
             canvasCtx.stroke();
         }
     });

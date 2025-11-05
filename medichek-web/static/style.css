@@ -45,13 +45,12 @@ body {
 /* Main content wrapper - centers camera and buttons vertically */
 .main-content-wrapper {
     position: fixed;
-    top: 0;
+    top: 200px;
     left: 0;
     right: 0;
     bottom: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
     padding-bottom: 0;
     pointer-events: none; /* Allow clicks to pass through wrapper */
@@ -65,15 +64,15 @@ body {
 .captured-frame-area {
     position: fixed;
     top: 50px; /* Below status bar */
-    left: 0;
-    right: 0;
+    left: 50%;
+    transform: translateX(-50%);
     width: 100%;
-    max-width: 100%;
+    max-width: 400px;
     height: 150px; /* Increased from 130px */
     margin: 0;
     padding: 5px 10px;
     background: #2a2a2a;
-    border-bottom: 2px solid #4a4a4a;
+    border: 2px dashed #4a4a4a;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -265,8 +264,8 @@ body {
 
 .video-container {
     position: relative;
-    width: 100%;
-    max-width: 720px;
+    width: 40%;
+    max-width: 500px;
     aspect-ratio: 1 / 1; /* Make it square */
     margin: 0 auto;
     background: #000;
@@ -276,6 +275,7 @@ body {
     overflow: hidden;
     flex-shrink: 1;
     min-height: 0;
+    border-radius: 16px;
 }
 
 #webcam {
@@ -491,16 +491,17 @@ body {
     align-items: center;
     justify-content: center;
     margin-bottom: 15px;
+    width: 100%;
 }
 
 /* Step status overlay */
 .step-status-overlay {
     background: rgba(26, 26, 26, 0.9);
-    padding: 15px 30px;
+    padding: 15px 60px;
     border-radius: 8px;
     border: 1px solid #3a3a3a;
     text-align: center;
-    max-width: 90%;
+    max-width: 95%;
 }
 
 #step-instruction {
@@ -508,11 +509,13 @@ body {
     color: #ffffff;
     margin-bottom: 10px;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 #step-progress {
-    font-size: 0.95em;
+    font-size: 0.8em;
     color: #b0b0b0;
+    white-space: nowrap;
 }
 
 /* Action button container */
@@ -632,8 +635,24 @@ body {
     border: 1px solid #2a2a2a;
 }
 
+/* Desktop responsive styles */
+@media (min-width: 769px) {
+    .step-status-container {
+        margin-bottom: 30px;
+    }
+}
+
 /* Mobile responsive styles */
 @media (max-width: 768px) {
+    .main-content-wrapper {
+        top: 175px;
+    }
+    
+    .video-container {
+        width: 90%;
+        max-width: 720px;
+    }
+    
     .status-panel {
         gap: 10px;
         padding: 10px;
@@ -661,6 +680,9 @@ body {
     
     .captured-frame-area {
         top: 45px; /* Below smaller status bar */
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 80%;
         height: 130px; /* Increased from 115px */
         padding: 4px 8px;
     }
@@ -730,6 +752,10 @@ body {
 
 /* Extra small phones */
 @media (max-width: 480px) {
+    .main-content-wrapper {
+        top: 157px;
+    }
+    
     .status-panel {
         gap: 8px;
         padding: 8px;
@@ -742,6 +768,9 @@ body {
     
     .captured-frame-area {
         top: 42px; /* Below smaller status bar */
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 90%;
         height: 115px; /* Increased from 100px */
         padding: 3px 6px;
     }
@@ -939,6 +968,7 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     z-index: 600;
     animation: slideDown 0.3s ease-out;
+    max-width: 80%;
 }
 
 .warning-toast.show {
@@ -950,7 +980,7 @@ body {
 }
 
 .toast-message {
-    white-space: nowrap;
+    text-align: center;
 }
 
 @keyframes slideDown {
