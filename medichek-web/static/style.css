@@ -484,18 +484,22 @@ body {
     color: #b0b0b0;
 }
 
+/* Step status container - fixed height wrapper */
+.step-status-container {
+    min-height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
 /* Step status overlay */
 .step-status-overlay {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
     background: rgba(26, 26, 26, 0.9);
     padding: 15px 30px;
     border-radius: 8px;
     border: 1px solid #3a3a3a;
     text-align: center;
-    z-index: 10;
     max-width: 90%;
 }
 

@@ -65,6 +65,9 @@ let ocrRecognized = false;
 let ocrSkipped = false;
 let capturedImageData = null;
 
+// Automatic OCR scanning
+let autoOcrInterval = null;
+
 // Store captured frames for download
 let step3CapturedFrameBlob = null;
 let step4CapturedFrameBlob = null;
@@ -251,10 +254,9 @@ function updateSessionUI() {
             }
         }
     } else if (analysisSession.currentStep === 1) {
-        // Step 1: OCR capture (auto-advance, no next button)
+        // Step 1: OCR capture with auto-scanning
         captureFrameBtn.style.display = 'block';
         captureFrameBtn.disabled = !cameraEnabled;
-        // Hide next step button - will auto-advance when OCR completes
         
         if (stepInstruction) stepInstruction.textContent = 'Step 1: Capture Product Label';
         if (stepProgress) {
@@ -263,21 +265,21 @@ function updateSessionUI() {
             } else if (ocrSkipped) {
                 stepProgress.textContent = 'Proceeding with manual review - Advancing...';
             } else {
-                stepProgress.textContent = 'Show "TEST" label to camera';
+                stepProgress.textContent = 'Show product label to camera (auto-scanning active)';
             }
         }
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         // Hide next step button - will auto-advance when palm detection completes
-        if (stepInstruction) stepInstruction.textContent = 'Step 2: Show Palm';
+        if (stepInstruction) stepInstruction.textContent = 'Step 2: Show product in hand';
         if (stepProgress) {
             if (palmDetectionState.completed) {
-                stepProgress.textContent = 'Palm detection complete ✓ - Advancing...';
+                stepProgress.textContent = 'Detection complete ✓ - Advancing...';
             } else if (palmDetectionState.detected && palmDetectionState.totalTime > 0) {
                 const progress = Math.min(100, Math.round((palmDetectionState.totalTime / PALM_DETECTION_REQUIRED) * 100));
-                stepProgress.textContent = `Hold palm steady: ${progress}%`;
+                stepProgress.textContent = `Hold hand steady: ${progress}%`;
             } else {
-                stepProgress.textContent = 'Show your palm with fingers down';
+                stepProgress.textContent = 'Show the product clearly in your hand';
             }
         }
     } else if (analysisSession.currentStep === 3) {
@@ -878,7 +880,7 @@ function nextStep() {
     
     // Step 1 (OCR) requires OCR recognition OR manual skip
     if (analysisSession.currentStep === 1 && !ocrRecognized && !ocrSkipped) {
-        addLog('⚠️ Please capture a frame with product label showing "TEST"', 'warning');
+        addLog('⚠️ Please capture a frame with the product label showing', 'warning');
         return;
     }
     
@@ -918,7 +920,7 @@ function nextStep() {
     // Log step completion
     if (analysisSession.currentStep === 0) {
         addLog('✅ Preliminaries completed: Camera ready and face centered', 'success');
-        addLog('📦 Step 1: Capture a frame showing product label with "TEST"', 'info');
+        addLog('📦 Step 1: Capture a frame showing the product label', 'info');
     } else if (analysisSession.currentStep === 1) {
         addLog('✅ Step 1 completed: Product label recognized', 'success');
         addLog('✋ Step 2: Show your palm to the camera with fingers pointing down for 2 seconds', 'info');
@@ -932,6 +934,14 @@ function nextStep() {
     
     analysisSession.currentStep++;
     addLog(`📍 Moving to step ${analysisSession.currentStep}/${analysisSession.totalSteps}`);
+    
+    // Start auto-scanning when entering step 1 (OCR)
+    if (analysisSession.currentStep === 1) {
+        startAutoOcrScanning();
+    } else {
+        // Stop auto-scanning if leaving step 1
+        stopAutoOcrScanning();
+    }
     
     // Reset step-specific states when entering a new step
     if (analysisSession.currentStep === 2) {
@@ -1065,6 +1075,106 @@ async function submitAnalysis() {
     }
 }
 
+// Auto-scanning OCR functionality
+function startAutoOcrScanning() {
+    if (autoOcrInterval) return; // Already running
+    
+    // Scan every 2 seconds
+    autoOcrInterval = setInterval(async () => {
+        if (analysisSession.currentStep !== 1 || ocrRecognized || ocrSkipped) {
+            stopAutoOcrScanning();
+            return;
+        }
+        
+        await performAutoOcrScan();
+    }, 1000);
+    
+    addLog('🔍 Auto-scanning for product label...', 'info');
+}
+
+function stopAutoOcrScanning() {
+    if (autoOcrInterval) {
+        clearInterval(autoOcrInterval);
+        autoOcrInterval = null;
+    }
+}
+
+async function performAutoOcrScan() {
+    if (!webcam || !cameraEnabled) return;
+    
+    // Calculate capture area dimensions
+    const minDimension = Math.min(webcam.videoWidth, webcam.videoHeight);
+    const squareSize = minDimension * OCR_CAPTURE_AREA.sizePercent;
+    const captureX = (webcam.videoWidth - squareSize) / 2;
+    const captureY = (webcam.videoHeight - squareSize) / 2;
+    const captureWidth = squareSize;
+    const captureHeight = squareSize;
+    
+    // Capture the OCR area silently (no countdown)
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = captureWidth;
+    captureCanvas.height = captureHeight;
+    const ctx = captureCanvas.getContext('2d');
+    
+    // Draw only the capture area from video WITHOUT mirroring
+    ctx.drawImage(
+        webcam,
+        captureX, captureY, captureWidth, captureHeight,
+        0, 0, captureWidth, captureHeight
+    );
+    
+    // Perform OCR on the captured area (silent - no UI updates)
+    try {
+        const worker = await Tesseract.createWorker();
+        const { data: { text, confidence } } = await worker.recognize(captureCanvas);
+        await worker.terminate();
+        
+        // Check if "TEST" is in the recognized text
+        const recognizedText = text.toUpperCase();
+        const containsTest = recognizedText.includes('TEST');
+        
+        if (containsTest) {
+            // Store the captured frame
+            capturedImageData = captureCanvas.toDataURL('image/png');
+            await new Promise(resolve => {
+                captureCanvas.toBlob(blob => {
+                    step3CapturedFrameBlob = blob;
+                    resolve();
+                }, 'image/png');
+            });
+            
+            // Display the captured frame
+            capturedFrameArea.classList.remove('empty');
+            const displayCanvas = step3FrameCanvas;
+            displayCanvas.width = captureCanvas.width;
+            displayCanvas.height = captureCanvas.height;
+            const displayCtx = displayCanvas.getContext('2d');
+            displayCtx.drawImage(captureCanvas, 0, 0, displayCanvas.width, displayCanvas.height);
+            
+            // Mark as recognized
+            ocrRecognized = true;
+            ocrStatusBadge.textContent = '✅ Recognized';
+            ocrStatusBadge.className = 'ocr-status success';
+            ocrResultCompact.innerHTML = '';
+            
+            addLog('✅ Product label recognized!', 'success');
+            
+            // Stop auto-scanning
+            stopAutoOcrScanning();
+            
+            // Update UI
+            updateSessionUI();
+            
+            // Auto-advance after short delay
+            setTimeout(() => {
+                nextStep();
+            }, 1500);
+        }
+    } catch (error) {
+        console.error('Auto OCR scan error:', error);
+    }
+}
+
 // Frame capture and OCR functionality
 async function captureFrame() {
     if (analysisSession.currentStep !== 1) {
@@ -1172,7 +1282,7 @@ async function performOCR(canvas) {
         
         if (containsTest) {
             ocrRecognized = true;
-            addLog('✅ Product label "TEST" recognized!', 'success');
+            addLog('✅ Product label recognized!', 'success');
             
             // Update compact display - only show success status
             ocrStatusBadge.textContent = '✅ Recognized';
@@ -1192,7 +1302,7 @@ async function performOCR(canvas) {
             }, 1500); // 1.5 second delay to show success message
         } else {
             ocrRecognized = false;
-            addLog('❌ "TEST" not found in image. Try again.', 'error');
+            addLog('❌ Product label not found in image. Try again.', 'error');
             
             // Update compact display - only show failed status
             ocrStatusBadge.textContent = '❌ Not Found';
@@ -1245,8 +1355,8 @@ async function captureStep4Frame() {
         maxY = Math.max(maxY, landmark.y);
     }
     
-    // Add padding around hand (20% on each side)
-    const padding = 0.2;
+    // Add padding around hand (35% on each side for more context)
+    const padding = 0.35;
     const width = maxX - minX;
     const height = maxY - minY;
     
@@ -1422,7 +1532,7 @@ function initializeFaceMesh() {
     
     faceMesh.setOptions({
         maxNumFaces: 1,
-        refineLandmarks: true,
+        refineLandmarks: false,  // Disable for better performance (we don't need iris/lips detail)
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
     });
@@ -2125,7 +2235,7 @@ function onFaceDetectionResults(results) {
         canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.6)';
         canvasCtx.font = 'bold 14px Arial';
         canvasCtx.textAlign = 'center';
-        canvasCtx.fillText('▼ SCAN ZONE ▼', 0, 0);
+        canvasCtx.fillText('▼ AUTO SCAN ▼', 0, 0);
         canvasCtx.restore();
     }
     
@@ -2176,19 +2286,34 @@ async function enableCamera() {
         // Start camera processing with MediaPipe
         camera = new Camera(webcam, {
             onFrame: async () => {
-                // Process face detection (for Step 0 - preliminaries)
-                await faceDetection.send({image: webcam});
+                // Optimize by only running necessary models for current step
                 
-                // Process hands detection (for Step 2 and Step 3)
-                await handsDetection.send({image: webcam});
-                
-                // Process face mesh (for Step 3 - Face Rubbing)
-                if (analysisSession.currentStep === 3) {
-                    await faceMesh.send({image: webcam});
+                // Step 0 (Preliminaries): Only need face detection
+                if (analysisSession.currentStep === 0) {
+                    await faceDetection.send({image: webcam});
+                }
+                // Step 1 (OCR): Use face detection to keep camera feed updating and draw OCR overlay
+                else if (analysisSession.currentStep === 1) {
+                    await faceDetection.send({image: webcam});
+                }
+                // Step 2 (Palm Detection): Need hands detection + face detection to ensure subject stays in frame
+                else if (analysisSession.currentStep === 2) {
+                    await Promise.all([
+                        faceDetection.send({image: webcam}),
+                        handsDetection.send({image: webcam})
+                    ]);
+                }
+                // Step 3 (Face Rubbing): Need both hands and face mesh
+                else if (analysisSession.currentStep === 3) {
+                    // Run hands and face mesh in parallel for better performance
+                    await Promise.all([
+                        handsDetection.send({image: webcam}),
+                        faceMesh.send({image: webcam})
+                    ]);
                 }
             },
-            width: 1280,
-            height: 720
+            width: 640,   // Reduced from 1280 for better FPS (processing resolution)
+            height: 480   // Reduced from 720 for better FPS (processing resolution)
         });
         
         await camera.start();

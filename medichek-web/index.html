@@ -54,7 +54,7 @@
                     <!-- Step 3: Product Label Capture -->
                     <div class="frame-slot" id="step3-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label">Step 3: Product Label</span>
+                            <span class="frame-label">Step 1</span>
                             <span id="ocr-status" class="ocr-status"></span>
                         </div>
                         <canvas id="step3-frame-canvas" class="frame-canvas"></canvas>
@@ -64,7 +64,7 @@
                     <!-- Step 4: Palm Detection Capture -->
                     <div class="frame-slot" id="step4-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label">Step 4: Palm Detection</span>
+                            <span class="frame-label">Step 2</span>
                             <span id="palm-status" class="palm-status"></span>
                         </div>
                         <canvas id="step4-frame-canvas" class="frame-canvas"></canvas>
@@ -78,16 +78,18 @@
 
         <!-- Main content wrapper (centered vertically) -->
         <div class="main-content-wrapper">
-            <!-- Video Feed Container -->
-            <div class="video-container">
-                <video id="webcam" autoplay playsinline></video>
-                <canvas id="output-canvas"></canvas>
-                
-                <!-- Step Status Overlay -->
+            <!-- Step Status Container (fixed height wrapper) -->
+            <div class="step-status-container">
                 <div class="step-status-overlay" id="step-status-overlay">
                     <div id="step-instruction" class="step-instruction">Ready to begin</div>
                     <div id="step-progress" class="step-progress"></div>
                 </div>
+            </div>
+            
+            <!-- Video Feed Container -->
+            <div class="video-container">
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="output-canvas"></canvas>
                 
                 <!-- Countdown Overlay -->
                 <div id="countdown-overlay" class="countdown-overlay">
@@ -109,9 +111,9 @@
 
             <!-- Action Button Container -->
             <div class="action-button-container">
-                <button id="start-tracking" class="btn btn-primary">Start Tracking</button>
+                <button id="start-tracking" class="btn btn-primary">Start</button>
                 <button id="next-step" class="btn btn-primary" style="display: none;">Next Step</button>
-                <button id="capture-frame" class="btn btn-primary" style="display: none;">Capture Frame</button>
+                <button id="capture-frame" class="btn btn-primary" style="display: none;">Manual Capture</button>
                 <button id="submit-analysis" class="btn btn-success" style="display: none;">Submit Analysis</button>
             </div>
         </div>
@@ -124,16 +126,16 @@
                     <h3 class="modal-title">Product Label Not Recognized</h3>
                 </div>
                 <div class="modal-body">
-                    <p>The automatic verification could not detect "TEST" in the captured image.</p>
+                    <p>The automatic verification could not detect the product label the captured image.</p>
                     <p><strong>What would you like to do?</strong></p>
                     <ul>
                         <li><strong>Retry:</strong> Capture a new image with better lighting or positioning</li>
-                        <li><strong>Continue Anyway:</strong> Submit the image for manual review</li>
+                        <li><strong>Continue:</strong> Submit the image for manual review</li>
                     </ul>
                 </div>
                 <div class="modal-actions">
                     <button id="retry-ocr" class="btn btn-primary">Retry Capture</button>
-                    <button id="continue-anyway" class="btn btn-secondary">Continue Anyway</button>
+                    <button id="continue-anyway" class="btn btn-secondary">Continue</button>
                 </div>
             </div>
         </div>
