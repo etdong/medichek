@@ -1,17 +1,32 @@
 // Medichek Configuration
 // This file contains configuration settings for the Medichek web client
 
+// Environment variables - Set these via your build process or environment
+// For development, you can create a .env file (do NOT commit to git!)
+// For production, set these as actual environment variables
+const ENV = {
+    DJANGO_SERVER_URL: window.ENV?.DJANGO_SERVER_URL || 'http://127.0.0.1:8000',
+    PRODUCTION_DJANGO_URL: window.ENV?.PRODUCTION_DJANGO_URL || 'https://your-django-server.com',
+    MINIO_ENDPOINT: window.ENV?.MINIO_ENDPOINT || 'localhost',
+    MINIO_PORT: window.ENV?.MINIO_PORT || 9000,
+    MINIO_USE_SSL: window.ENV?.MINIO_USE_SSL === 'true' || false,
+    MINIO_ACCESS_KEY: window.ENV?.MINIO_ACCESS_KEY || 'minioadmin',
+    MINIO_SECRET_KEY: window.ENV?.MINIO_SECRET_KEY || 'minioadmin',
+    MINIO_VIDEOS_BUCKET: window.ENV?.MINIO_VIDEOS_BUCKET || 'video',
+    MINIO_IMAGES_BUCKET: window.ENV?.MINIO_IMAGES_BUCKET || 'product',
+    MINIO_REGION: window.ENV?.MINIO_REGION || 'us-east-1'
+};
+
 const MedichekConfig = {
     // Django Backend Server URL
-    // Change this to match your Django server location
-    djangoServerUrl: 'http://127.0.0.1:8000',
+    djangoServerUrl: ENV.DJANGO_SERVER_URL,
     
     // Auto-detect environment (optional)
     // This will use different URLs for localhost vs production
     useAutoDetect: false,
     
     // Production Django URL (used when useAutoDetect is true and not on localhost)
-    productionDjangoUrl: 'https://your-django-server.com',
+    productionDjangoUrl: ENV.PRODUCTION_DJANGO_URL,
     
     // Get the appropriate Django URL based on configuration
     getDjangoUrl: function() {
@@ -22,6 +37,35 @@ const MedichekConfig = {
             return isLocalhost ? this.djangoServerUrl : this.productionDjangoUrl;
         }
         return this.djangoServerUrl;
+    },
+    
+    // MinIO Configuration
+    // MinIO provides S3-compatible object storage for captured media
+    minIO: {
+        enabled: true,  // Set to false to disable MinIO upload (will download locally instead)
+        endPoint: ENV.MINIO_ENDPOINT,
+        port: ENV.MINIO_PORT,
+        useSSL: ENV.MINIO_USE_SSL,
+        accessKey: ENV.MINIO_ACCESS_KEY,
+        secretKey: ENV.MINIO_SECRET_KEY,
+        
+        // Separate buckets for videos and images
+        videosBucketName: ENV.MINIO_VIDEOS_BUCKET,
+        imagesBucketName: ENV.MINIO_IMAGES_BUCKET,
+        
+        region: ENV.MINIO_REGION,
+        
+        // Generate object key for a file
+        getObjectKey: function(sessionId, filename) {
+            // Get current date in YYYYMMDD format
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const dateStr = `${year}${month}${day}`;
+            
+            return `${dateStr}/${sessionId}/${filename}`;
+        }
     }
 };
 

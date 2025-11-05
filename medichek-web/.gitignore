@@ -24,6 +24,12 @@ desktop.ini
 # Logs
 *.log
 
+# Environment configuration (contains sensitive data)
+env.js
+.env
+.env.local
+.env.production
+
 # Local configuration (users should copy config.example.js)
 # Uncomment if you want to ignore local config:
 # static/config.js
