@@ -1181,7 +1181,7 @@ async function submitAnalysis() {
     addLog('📤 Submitting analysis results to server...');
     
     try {
-        const response = await fetch(`${SERVER_URL}/api/data/`, {
+        const response = await fetch(`${SERVER_URL}/api/analysis/`, {
             method: 'POST',
             mode: 'cors',
             headers: {
