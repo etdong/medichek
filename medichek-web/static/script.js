@@ -2,6 +2,20 @@
 const DJANGO_SERVER_URL = (window.MedichekConfig && window.MedichekConfig.getDjangoUrl()) 
     || 'http://127.0.0.1:8000';
 
+// Offline mode flag
+let offlineMode = false;
+let djangoOnline = false;
+let minioOnline = false;
+
+// Current server status (for re-translation when language changes)
+let currentServerStatus = 'Checking...';
+let currentDjangoStatus = 'checking'; // 'checking', 'online', or 'offline'
+let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'
+
+// Current frame capture statuses (for re-translation when language changes)
+let currentOcrStatus = null; // 'analyzing', 'recognized', 'notFound', 'error', 'review', or null
+let currentPalmStatus = null; // 'captured' or null
+
 // Global state - Client-side only, no server sessions
 let analysisSession = {
     sessionId: null,
@@ -88,13 +102,22 @@ let currentStepRecording = null;
 let stepRecordings = {
     step1: null,
     step2: null,
-    step3: null,
-    step4: null,
-    step5: null
+    step3: null
 };
 let recordingConsent = false;
 
 // DOM elements
+// Language selector
+const langEnBtn = document.getElementById('lang-en');
+const langZhBtn = document.getElementById('lang-zh');
+
+const loadingScreen = document.getElementById('loading-screen');
+const djangoCheckStatus = document.getElementById('django-check');
+const minioCheckStatus = document.getElementById('minio-check');
+const offlinePrompt = document.getElementById('offline-prompt');
+const continueOfflineBtn = document.getElementById('continue-offline-btn');
+const retryConnectionBtn = document.getElementById('retry-connection-btn');
+
 const serverStatus = document.getElementById('server-status');
 const sessionIdElement = document.getElementById('session-id');
 const currentStepElement = document.getElementById('current-step');
@@ -103,12 +126,21 @@ const currentStepElement = document.getElementById('current-step');
 const startTrackingBtn = document.getElementById('start-tracking');
 const captureFrameBtn = document.getElementById('capture-frame');
 const nextStepBtn = document.getElementById('next-step');
-const submitAnalysisBtn = document.getElementById('submit-analysis');
+const finishSessionBtn = document.getElementById('finish-session');
+
+// Review/Finish screen elements
+const reviewScreen = document.getElementById('review-screen');
+const submitAnalysisBtn = document.getElementById('submit-analysis-btn');
+const restartSessionBtn = document.getElementById('restart-session-btn');
 
 // Modal elements
 const ocrFailModal = document.getElementById('ocr-fail-modal');
 const retryOcrBtn = document.getElementById('retry-ocr');
 const continueAnywayBtn = document.getElementById('continue-anyway');
+
+const recordingConsentModal = document.getElementById('recording-consent-modal');
+const acceptRecordingBtn = document.getElementById('accept-recording-btn');
+const declineRecordingBtn = document.getElementById('decline-recording-btn');
 
 // Captured frame elements (split display for step 3 and step 4)
 const capturedFrameArea = document.getElementById('captured-frame-area');
@@ -142,6 +174,7 @@ const completionTitle = document.getElementById('completion-title');
 const completionMessage = document.getElementById('completion-message');
 const completionDetails = document.getElementById('completion-details');
 const startNewSessionBtn = document.getElementById('start-new-session-btn');
+const downloadAnalysisBtn = document.getElementById('download-analysis-btn');
 
 // Utility functions
 // Utility functions (no-op stubs for removed UI elements)
@@ -156,10 +189,68 @@ function updateResponse(data) {
 }
 
 function updateServerStatus(status) {
-    serverStatus.textContent = status;
+    // Store the current status for re-translation
+    currentServerStatus = status;
+    
+    // Translate the status text
+    let translatedStatus = status;
+    if (status === 'Connected') translatedStatus = t('status.connected');
+    else if (status === 'Checking...') translatedStatus = t('status.checking');
+    else if (status === 'Offline Mode') translatedStatus = t('status.offlineMode');
+    else if (status === 'Disconnected') translatedStatus = t('status.disconnected');
+    
+    serverStatus.textContent = translatedStatus;
     serverStatus.className = 'status-badge ' + 
         (status === 'Connected' ? 'connected' : 
          status === 'Checking...' ? 'checking' : 'disconnected');
+}
+
+// Update loading screen status checks with current language
+function updateLoadingScreenStatuses() {
+    // Update Django status
+    if (currentDjangoStatus === 'checking') {
+        djangoCheckStatus.textContent = t('loading.checking');
+    } else if (currentDjangoStatus === 'online') {
+        djangoCheckStatus.textContent = t('loading.online');
+    } else if (currentDjangoStatus === 'offline') {
+        djangoCheckStatus.textContent = t('loading.offline');
+    }
+    
+    // Update MinIO status
+    if (currentMinioStatus === 'checking') {
+        minioCheckStatus.textContent = t('loading.checking');
+    } else if (currentMinioStatus === 'online') {
+        minioCheckStatus.textContent = t('loading.online');
+    } else if (currentMinioStatus === 'offline') {
+        minioCheckStatus.textContent = t('loading.offline');
+    }
+}
+
+// Update frame capture statuses with current language
+function updateFrameCaptureStatuses() {
+    // Update OCR status badge
+    if (currentOcrStatus === 'analyzing') {
+        ocrStatusBadge.textContent = t('frame.ocrAnalyzing');
+        ocrStatusBadge.className = 'ocr-status analyzing';
+    } else if (currentOcrStatus === 'recognized') {
+        ocrStatusBadge.textContent = t('frame.ocrRecognized');
+        ocrStatusBadge.className = 'ocr-status success';
+    } else if (currentOcrStatus === 'notFound') {
+        ocrStatusBadge.textContent = t('frame.ocrNotFound');
+        ocrStatusBadge.className = 'ocr-status failed';
+    } else if (currentOcrStatus === 'error') {
+        ocrStatusBadge.textContent = t('frame.ocrError');
+        ocrStatusBadge.className = 'ocr-status failed';
+    } else if (currentOcrStatus === 'review') {
+        ocrStatusBadge.textContent = t('frame.ocrReview');
+        ocrStatusBadge.className = 'ocr-status warning';
+    }
+    
+    // Update Palm status badge
+    if (currentPalmStatus === 'captured') {
+        palmStatusBadge.textContent = t('frame.palmCaptured');
+        palmStatusBadge.className = 'palm-status success';
+    }
 }
 
 function showWarningToast(message, duration = 3000) {
@@ -220,14 +311,14 @@ function generateSessionId() {
 }
 
 function updateSessionUI() {
-    sessionIdElement.textContent = analysisSession.sessionId || 'None';
+    sessionIdElement.textContent = analysisSession.sessionId || t('status.sessionNone');
     currentStepElement.textContent = `${analysisSession.currentStep}/${analysisSession.totalSteps}`;
     
     // Hide all buttons first
     startTrackingBtn.style.display = 'none';
     nextStepBtn.style.display = 'none';
     captureFrameBtn.style.display = 'none';
-    submitAnalysisBtn.style.display = 'none';
+    finishSessionBtn.style.display = 'none';
     
     // Update step instruction overlay
     const stepInstruction = document.getElementById('step-instruction');
@@ -237,20 +328,20 @@ function updateSessionUI() {
         // Not started yet
         startTrackingBtn.style.display = 'block';
         startTrackingBtn.disabled = false;
-        if (stepInstruction) stepInstruction.textContent = 'Ready to begin';
+        if (stepInstruction) stepInstruction.textContent = t('steps.readyToBegin');
         if (stepProgress) stepProgress.textContent = '';
     } else if (analysisSession.currentStep === 0) {
         // Step 0: Preliminaries (camera + face centering)
         nextStepBtn.style.display = 'block';
         nextStepBtn.disabled = !cameraEnabled || !faceCentered;
-        if (stepInstruction) stepInstruction.textContent = 'Preliminaries: Camera & Face Centering';
+        if (stepInstruction) stepInstruction.textContent = t('steps.preliminaries.title');
         if (stepProgress) {
             if (!cameraEnabled) {
-                stepProgress.textContent = 'Activating camera...';
+                stepProgress.textContent = t('steps.preliminaries.activatingCamera');
             } else if (!faceCentered) {
-                stepProgress.textContent = 'Position your face in the center';
+                stepProgress.textContent = t('steps.preliminaries.positionFace');
             } else {
-                stepProgress.textContent = 'Camera ready ✓ Face centered ✓ - Ready to begin';
+                stepProgress.textContent = t('steps.preliminaries.ready');
             }
         }
     } else if (analysisSession.currentStep === 1) {
@@ -258,28 +349,28 @@ function updateSessionUI() {
         captureFrameBtn.style.display = 'block';
         captureFrameBtn.disabled = !cameraEnabled;
         
-        if (stepInstruction) stepInstruction.textContent = 'Step 1: Capture Product Label';
+        if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
         if (stepProgress) {
             if (ocrRecognized) {
-                stepProgress.textContent = 'Product recognized ✓ - Advancing...';
+                stepProgress.textContent = t('steps.ocr.productRecognized');
             } else if (ocrSkipped) {
-                stepProgress.textContent = 'Proceeding with manual review - Advancing...';
+                stepProgress.textContent = t('steps.ocr.proceedingManual');
             } else {
-                stepProgress.textContent = 'Show product label to camera (auto-scanning active)';
+                stepProgress.textContent = t('steps.ocr.showLabel');
             }
         }
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         // Hide next step button - will auto-advance when palm detection completes
-        if (stepInstruction) stepInstruction.textContent = 'Step 2: Show product on hand/fingers';
+        if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
         if (stepProgress) {
             if (palmDetectionState.completed) {
-                stepProgress.textContent = 'Detection complete ✓ - Advancing...';
+                stepProgress.textContent = t('steps.palm.complete');
             } else if (palmDetectionState.detected && palmDetectionState.totalTime > 0) {
                 const progress = Math.min(100, Math.round((palmDetectionState.totalTime / PALM_DETECTION_REQUIRED) * 100));
-                stepProgress.textContent = `Hold hand steady: ${progress}%`;
+                stepProgress.textContent = t('steps.palm.holdSteady', { progress });
             } else {
-                stepProgress.textContent = 'Show the product clearly on hand/palm/fingers';
+                stepProgress.textContent = t('steps.palm.showProduct');
             }
         }
     } else if (analysisSession.currentStep === 3) {
@@ -287,50 +378,20 @@ function updateSessionUI() {
         const allAreasRubbed = faceRubbingState.forehead.rubbed && 
                                faceRubbingState.leftSide.rubbed && 
                                faceRubbingState.rightSide.rubbed;
-        submitAnalysisBtn.style.display = 'block';
-        submitAnalysisBtn.disabled = !allAreasRubbed;
-        if (stepInstruction) stepInstruction.textContent = 'Step 3: Rub Face Areas';
+        finishSessionBtn.style.display = 'block';
+        finishSessionBtn.disabled = !allAreasRubbed;
+        if (stepInstruction) stepInstruction.textContent = t('steps.faceRubbing.title');
         if (stepProgress) {
             const foreheadPercent = Math.min(100, Math.round((faceRubbingState.forehead.totalTime / RUBBING_DURATION_REQUIRED) * 100));
             const leftPercent = Math.min(100, Math.round((faceRubbingState.leftSide.totalTime / RUBBING_DURATION_REQUIRED) * 100));
             const rightPercent = Math.min(100, Math.round((faceRubbingState.rightSide.totalTime / RUBBING_DURATION_REQUIRED) * 100));
-            stepProgress.textContent = `Forehead: ${faceRubbingState.forehead.rubbed ? '✓' : foreheadPercent + '%'} | Left: ${faceRubbingState.leftSide.rubbed ? '✓' : leftPercent + '%'} | Right: ${faceRubbingState.rightSide.rubbed ? '✓' : rightPercent + '%'}`;
+            stepProgress.textContent = t('steps.faceRubbing.progress', {
+                forehead: faceRubbingState.forehead.rubbed ? '✓' : foreheadPercent + '%',
+                left: faceRubbingState.leftSide.rubbed ? '✓' : leftPercent + '%',
+                right: faceRubbingState.rightSide.rubbed ? '✓' : rightPercent + '%'
+            });
         }
     }
-}
-
-// Client-side tracking simulation
-function simulateTracking() {
-    // Simulate detection results (in production, this would come from MediaPipe/YOLO)
-    return {
-        timestamp: new Date().toISOString(),
-        step: analysisSession.currentStep,
-        detections: {
-            face: {
-                detected: Math.random() > 0.2,
-                confidence: 0.85 + Math.random() * 0.15,
-                landmarks: Math.random() > 0.5 ? 68 : null
-            },
-            hands: {
-                detected: Math.random() > 0.3,
-                confidence: 0.80 + Math.random() * 0.20,
-                count: Math.random() > 0.5 ? 2 : 1
-            },
-            product: {
-                detected: Math.random() > 0.4,
-                confidence: 0.75 + Math.random() * 0.25,
-                position: {
-                    x: Math.random(),
-                    y: Math.random()
-                }
-            }
-        },
-        metrics: {
-            application_duration: (Date.now() - analysisSession.startTime) / 1000,
-            hand_face_distance: Math.random() * 100,
-            application_accuracy: 0.70 + Math.random() * 0.30
-        }
-    };
 }
 
 // API functions
@@ -630,13 +691,13 @@ async function uploadToMinIO(analysisData) {
         // Hide upload overlay
         uploadOverlay.style.display = 'none';
         
-        // Show completion screen
+        // Show completion screen with download button
         const details = `
-            <div>Session ID: ${sessionId}</div>
-            <div>Date: ${dateStr}</div>
-            <div>Total files: ${uploadCount}</div>
+            <div>${t('completion.sessionId')}: ${sessionId}</div>
+            <div>${t('completion.date')}: ${dateStr}</div>
+            <div>${t('completion.totalFiles')}: ${uploadCount}</div>
         `;
-        showCompletionScreen(true, 'Upload Successful!', 'All session data has been uploaded to MinIO.', details);
+        showCompletionScreen(true, t('completion.uploadSuccess'), t('completion.uploadMessage'), details, true);
         
         // Return the URLs for use by other functions
         return minioFileUrls;
@@ -657,12 +718,19 @@ async function uploadToMinIO(analysisData) {
     }
 }
 
-function showCompletionScreen(success, title, message, details = '') {
+function showCompletionScreen(success, title, message, details = '', showDownload = false) {
     // Update completion screen content
     completionIcon.className = `completion-icon ${success ? 'success' : 'error'}`;
     completionTitle.textContent = title;
     completionMessage.textContent = message;
     completionDetails.innerHTML = details;
+    
+    // Show/hide download button based on parameter
+    if (showDownload) {
+        downloadAnalysisBtn.style.display = 'inline-block';
+    } else {
+        downloadAnalysisBtn.style.display = 'none';
+    }
     
     // Show completion screen
     completionScreen.style.display = 'flex';
@@ -703,6 +771,87 @@ function createAnalysisData() {
         // MinIO file URLs (if available)
         minio_urls: uploadedFileUrls || null
     };
+}
+
+// Download analysis data locally (offline mode)
+async function downloadLocalAnalysis(analysisData) {
+    addLog('📥 Creating zip file with all recordings and analysis data...', 'info');
+    
+    // Show download overlay
+    downloadOverlay.style.display = 'flex';
+    
+    const zip = new JSZip();
+    let fileCount = 0;
+    
+    // Add video recordings to zip (only steps 1-3 now)
+    for (let i = 1; i <= 3; i++) {
+        const stepKey = `step${i}`;
+        const blob = stepRecordings[stepKey];
+        
+        if (blob) {
+            zip.file(`step${i}.webm`, blob);
+            fileCount++;
+        }
+    }
+    
+    // Add captured frame from step 1 (OCR - product label, if exists)
+    if (step3CapturedFrameBlob) {
+        zip.file('step1_product_label.png', step3CapturedFrameBlob);
+        fileCount++;
+    }
+    
+    // Add captured frame from step 2 (Palm Detection, if exists)
+    if (step4CapturedFrameBlob) {
+        zip.file('step2_palm_detection.png', step4CapturedFrameBlob);
+        fileCount++;
+    }
+    
+    // Add analysis metadata JSON
+    zip.file('analysis.json', JSON.stringify(analysisData, null, 2));
+    fileCount++;
+    
+    try {
+        // Generate zip file
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${analysisSession.sessionId}_${new Date().toISOString().replace(/:/g, '-')}.zip`;
+        
+        // Trigger download
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup after download
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            const videoCount = Object.values(stepRecordings).filter(Boolean).length;
+            const frameCount = (step3CapturedFrameBlob ? 1 : 0) + (step4CapturedFrameBlob ? 1 : 0);
+            addLog(`✅ Downloaded zip file with ${fileCount} files (${videoCount} videos + ${frameCount} frames + metadata)`, 'success');
+            
+            // Hide download overlay
+            downloadOverlay.style.display = 'none';
+            
+            // Show completion screen
+            const details = `
+                <div>${t('completion.sessionId')}: ${analysisSession.sessionId}</div>
+                <div>${t('completion.totalFiles')}: ${fileCount}</div>
+                <div style="color: #ffa500; margin-top: 10px;">${t('completion.offlineMode')}</div>
+            `;
+            showCompletionScreen(true, t('completion.downloadSuccess'), t('completion.downloadMessage'), details);
+        }, 1000);
+    } catch (error) {
+        addLog(`❌ Failed to create zip file: ${error.message}`, 'error');
+        console.error('Zip creation error:', error);
+        
+        // Hide download overlay
+        downloadOverlay.style.display = 'none';
+        
+        // Show completion screen with error
+        showCompletionScreen(false, 'Download Failed', `Failed to create zip file: ${error.message}`);
+    }
 }
 
 function downloadAllRecordings() {
@@ -780,11 +929,10 @@ function downloadAllRecordings() {
                     
                     // Show completion screen
                     const details = `
-                        <div>Session ID: ${analysisSession.sessionId}</div>
-                        <div>Total files: ${fileCount}</div>
-                        <div>Videos: ${videoCount}, Images: ${frameCount}</div>
+                        <div>${t('completion.sessionId')}: ${analysisSession.sessionId}</div>
+                        <div>${t('completion.totalFiles')}: ${fileCount}</div>
                     `;
-                    showCompletionScreen(true, 'Download Successful!', 'All session data has been downloaded to your device.', details);
+                    showCompletionScreen(true, t('completion.downloadSuccess'), t('completion.downloadMessage'), details);
                 }, 1000); // 1 second delay to ensure download starts
             });
         }).catch(function(error) {
@@ -809,18 +957,14 @@ function downloadAllRecordings() {
 }
 
 async function startTracking() {
-    // Ask for recording consent
-    const consent = confirm(
-        'This application will record video of each step for quality assurance.\n\n' +
-        'The videos will be saved to your device at the end of the session.\n\n' +
-        'Do you consent to video recording?'
-    );
-    
-    if (!consent) {
-        addLog('❌ Video recording consent denied. Cannot proceed.', 'error');
-        alert('Video recording is required to proceed with the tracking session.');
-        return;
-    }
+    // Show recording consent modal
+    recordingConsentModal.style.display = 'flex';
+}
+
+// Handle recording consent acceptance
+async function acceptRecordingConsent() {
+    // Hide modal
+    recordingConsentModal.style.display = 'none';
     
     recordingConsent = true;
     addLog('✅ Video recording consent granted', 'success');
@@ -859,6 +1003,15 @@ async function startTracking() {
         message: 'Session started - tracking locally',
         session: analysisSession
     });
+}
+
+// Handle recording consent decline
+function declineRecordingConsent() {
+    // Hide modal
+    recordingConsentModal.style.display = 'none';
+    
+    addLog('❌ Video recording consent denied. Cannot proceed.', 'error');
+    addLog('⚠️ Video recording is required to proceed with the tracking session.', 'warning');
 }
 
 function nextStep() {
@@ -929,7 +1082,7 @@ function nextStep() {
         addLog('💆 Step 3: Rub your forehead, left cheek, and right cheek with your hand (5 seconds each)', 'info');
     } else if (analysisSession.currentStep === 3) {
         addLog('✅ Step 3 completed: All face areas rubbed', 'success');
-        addLog('🎉 All steps completed! You can now submit your analysis', 'success');
+        addLog('🎉 All steps completed! Click Finish to review', 'success');
     }
     
     analysisSession.currentStep++;
@@ -974,8 +1127,7 @@ function nextStep() {
         step: analysisSession.currentStep - 1,
         faceDetected: faceDetected,
         faceCentered: faceCentered,
-        facePosition: { ...facePosition },
-        ...simulateTracking()
+        facePosition: { ...facePosition }
     };
     
     updateSessionUI();
@@ -992,22 +1144,11 @@ async function submitAnalysis() {
         return;
     }
     
+    // Hide review screen
+    reviewScreen.style.display = 'none';
+    
     // Disable submit button to prevent duplicate submissions
     submitAnalysisBtn.disabled = true;
-    
-    // Stop recording step 3 (face rubbing)
-    if (recordingConsent) {
-        stopStepRecording();
-        addLog('🎥 All recordings completed', 'success');
-    }
-    
-    // End timing for step 3
-    const currentTime = Date.now();
-    if (analysisSession.stepTimings.step3.startTime && !analysisSession.stepTimings.step3.endTime) {
-        analysisSession.stepTimings.step3.endTime = currentTime;
-        analysisSession.stepTimings.step3.duration = 
-            (currentTime - analysisSession.stepTimings.step3.startTime) / 1000; // in seconds
-    }
 
     const analysisResults = createAnalysisData();
 
@@ -1017,6 +1158,13 @@ async function submitAnalysis() {
         issues_detected: [],
         recommendations: []
     };
+    
+    // If in offline mode, download instead of upload
+    if (offlineMode) {
+        addLog('💾 Offline mode: Downloading analysis data locally...', 'info');
+        await downloadLocalAnalysis(analysisResults);
+        return;
+    }
     
     // Upload to MinIO first if consent was given, to get the file URLs
     if (recordingConsent) {
@@ -1153,7 +1301,8 @@ async function performAutoOcrScan() {
             
             // Mark as recognized
             ocrRecognized = true;
-            ocrStatusBadge.textContent = '✅ Recognized';
+            currentOcrStatus = 'recognized';
+            ocrStatusBadge.textContent = t('frame.ocrRecognized');
             ocrStatusBadge.className = 'ocr-status success';
             ocrResultCompact.innerHTML = '';
             
@@ -1260,7 +1409,8 @@ async function captureFrame() {
     displayCtx.drawImage(captureCanvas, 0, 0, displayCanvas.width, displayCanvas.height);
     
     // Update status badge
-    ocrStatusBadge.textContent = '⏳ Analyzing...';
+    currentOcrStatus = 'analyzing';
+    ocrStatusBadge.textContent = t('frame.ocrAnalyzing');
     ocrStatusBadge.className = 'ocr-status analyzing';
     ocrResultCompact.innerHTML = '';
     
@@ -1289,7 +1439,8 @@ async function performOCR(canvas) {
             addLog('✅ Product label recognized!', 'success');
             
             // Update compact display - only show success status
-            ocrStatusBadge.textContent = '✅ Recognized';
+            currentOcrStatus = 'recognized';
+            ocrStatusBadge.textContent = t('frame.ocrRecognized');
             ocrStatusBadge.className = 'ocr-status success';
             ocrResultCompact.innerHTML = '';  // No detailed message
             
@@ -1309,7 +1460,8 @@ async function performOCR(canvas) {
             addLog('❌ Product label not found in image. Try again.', 'error');
             
             // Update compact display - only show failed status
-            ocrStatusBadge.textContent = '❌ Not Found';
+            currentOcrStatus = 'notFound';
+            ocrStatusBadge.textContent = t('frame.ocrNotFound');
             ocrStatusBadge.className = 'ocr-status failed';
             ocrResultCompact.innerHTML = '';  // No detailed message
             
@@ -1324,7 +1476,8 @@ async function performOCR(canvas) {
         addLog('❌ OCR failed: ' + error.message, 'error');
         
         // Update compact display - only show error status
-        ocrStatusBadge.textContent = '❌ Error';
+        currentOcrStatus = 'error';
+        ocrStatusBadge.textContent = t('frame.ocrError');
         ocrStatusBadge.className = 'ocr-status failed';
         ocrResultCompact.innerHTML = '';  // No detailed error message
         
@@ -1418,19 +1571,70 @@ async function captureStep4Frame() {
     displayCtx.drawImage(captureCanvas, 0, 0, displayCanvas.width, displayCanvas.height);
     
     // Update status badge
-    palmStatusBadge.textContent = '✅ Captured';
+    currentPalmStatus = 'captured';
+    palmStatusBadge.textContent = t('frame.palmCaptured');
     palmStatusBadge.className = 'palm-status success';
     
     addLog('✅ Palm area captured!', 'success');
+}
+
+// Show review/finish screen
+function showReviewScreen() {
+    // Stop recording if still active
+    if (recordingConsent) {
+        stopStepRecording();
+        addLog('🎥 All recordings completed', 'success');
+    }
+    
+    // End timing for step 3
+    const currentTime = Date.now();
+    if (analysisSession.stepTimings.step3.startTime && !analysisSession.stepTimings.step3.endTime) {
+        analysisSession.stepTimings.step3.endTime = currentTime;
+        analysisSession.stepTimings.step3.duration = 
+            (currentTime - analysisSession.stepTimings.step3.startTime) / 1000;
+    }
+    
+    // Update review screen status
+    document.getElementById('review-ocr-status').textContent = ocrRecognized ? t('review.recognized') : t('review.manualReview');
+    document.getElementById('review-palm-status').textContent = t('review.completed');
+    document.getElementById('review-face-status').textContent = t('review.completed');
+    
+    // Update submit button text based on offline mode
+    if (offlineMode) {
+        submitAnalysisBtn.textContent = t('review.download');
+        submitAnalysisBtn.className = 'btn btn-primary';
+    } else {
+        submitAnalysisBtn.textContent = t('review.submit');
+        submitAnalysisBtn.className = 'btn btn-success';
+    }
+    
+    // Show review screen
+    reviewScreen.style.display = 'flex';
+    
+    addLog('🎉 All steps completed! Review your session', 'success');
+}
+
+// Restart session from review screen
+function restartSession() {
+    // Hide review screen
+    reviewScreen.style.display = 'none';
+    
+    // Reset everything
+    location.reload();
 }
 
 // Event listeners
 startTrackingBtn.addEventListener('click', startTracking);
 captureFrameBtn.addEventListener('click', captureFrame);
 nextStepBtn.addEventListener('click', nextStep);
+finishSessionBtn.addEventListener('click', showReviewScreen);
 submitAnalysisBtn.addEventListener('click', submitAnalysis);
+restartSessionBtn.addEventListener('click', restartSession);
 
 // Modal event handlers
+acceptRecordingBtn.addEventListener('click', acceptRecordingConsent);
+declineRecordingBtn.addEventListener('click', declineRecordingConsent);
+
 retryOcrBtn.addEventListener('click', () => {
     // Hide the modal
     ocrFailModal.style.display = 'none';
@@ -1457,7 +1661,8 @@ continueAnywayBtn.addEventListener('click', () => {
     ocrSkipped = true;
     
     // Update the status badge to show manual review
-    ocrStatusBadge.textContent = '⚠️ Review';
+    currentOcrStatus = 'review';
+    ocrStatusBadge.textContent = t('frame.ocrReview');
     ocrStatusBadge.className = 'ocr-status warning';
     
     addLog('OCR verification skipped - proceeding with manual review', 'warning');
@@ -1472,10 +1677,190 @@ startNewSessionBtn.addEventListener('click', () => {
     window.location.reload();
 });
 
+// Download analysis button (after upload completion)
+downloadAnalysisBtn.addEventListener('click', async () => {
+    addLog('📥 Downloading analysis data...', 'info');
+    
+    // Hide completion screen
+    completionScreen.style.display = 'none';
+    
+    // Show download overlay
+    downloadOverlay.style.display = 'flex';
+    
+    // Create analysis data
+    const analysisData = createAnalysisData();
+    analysisData.assessment = {
+        completed: analysisSession.currentStep === analysisSession.totalSteps,
+        quality_score: 0.70 + Math.random() * 0.30,
+        issues_detected: [],
+        recommendations: []
+    };
+    
+    // Call the download function
+    await downloadAllRecordings();
+});
+
 // Initialize
-window.addEventListener('load', () => {
+// Check Django server connection
+async function checkDjangoServer() {
+    try {
+        const response = await fetch(`${DJANGO_SERVER_URL}/api/health/`, {
+            method: 'GET',
+            mode: 'cors',
+            headers: {
+                'Accept': 'application/json'
+            },
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server responded with status ${response.status}`);
+        }
+        
+        await response.json();
+        return true;
+    } catch (error) {
+        console.error('Django server check failed:', error);
+        return false;
+    }
+}
+
+// Check MinIO server connection
+async function checkMinIOServer() {
+    if (!MedichekConfig.minIO.enabled) {
+        return false;
+    }
+    
+    try {
+        // Configure AWS SDK to work with MinIO
+        AWS.config.update({
+            accessKeyId: MedichekConfig.minIO.accessKey,
+            secretAccessKey: MedichekConfig.minIO.secretKey,
+            region: MedichekConfig.minIO.region,
+            s3ForcePathStyle: true
+        });
+        
+        const s3 = new AWS.S3({
+            endpoint: `${MedichekConfig.minIO.useSSL ? 'https' : 'http'}://${MedichekConfig.minIO.endPoint}:${MedichekConfig.minIO.port}`,
+            s3BucketEndpoint: false
+        });
+        
+        // Try to list buckets to test connection
+        // Use callback-based approach instead of promise
+        return new Promise((resolve, reject) => {
+            s3.listBuckets((err, data) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(true);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('MinIO server check failed:', error);
+        return false;
+    }
+}
+
+// Initialize and check servers
+async function initializeApplication() {
+    // Check Django server
+    currentDjangoStatus = 'checking';
+    djangoCheckStatus.textContent = t('loading.checking');
+    djangoCheckStatus.className = 'check-status checking';
+    
+    djangoOnline = await checkDjangoServer();
+    
+    if (djangoOnline) {
+        currentDjangoStatus = 'online';
+        djangoCheckStatus.textContent = t('loading.online');
+        djangoCheckStatus.className = 'check-status online';
+    } else {
+        currentDjangoStatus = 'offline';
+        djangoCheckStatus.textContent = t('loading.offline');
+        djangoCheckStatus.className = 'check-status offline';
+    }
+    
+    // Check MinIO server
+    currentMinioStatus = 'checking';
+    minioCheckStatus.textContent = t('loading.checking');
+    minioCheckStatus.className = 'check-status checking';
+    
+    minioOnline = await checkMinIOServer();
+    
+    if (minioOnline) {
+        currentMinioStatus = 'online';
+        minioCheckStatus.textContent = t('loading.online');
+        minioCheckStatus.className = 'check-status online';
+    } else {
+        currentMinioStatus = 'offline';
+        minioCheckStatus.textContent = t('loading.offline');
+        minioCheckStatus.className = 'check-status offline';
+    }
+    
+    // If both servers are online, proceed normally
+    if (djangoOnline && minioOnline) {
+        offlineMode = false;
+        updateServerStatus('Connected');
+        hideLoadingScreen();
+    } else {
+        // Show offline prompt
+        offlinePrompt.style.display = 'flex';
+    }
+}
+
+// Hide loading screen and start application
+function hideLoadingScreen() {
+    loadingScreen.style.display = 'none';
     updateSessionUI();
-    checkServer();
+    if (!offlineMode) {
+        checkServer();
+    }
+}
+
+// Continue in offline mode
+function continueOffline() {
+    offlineMode = true;
+    updateServerStatus('Offline Mode');
+    addLog(t('loading.offlineModeLog'), 'warning');
+    hideLoadingScreen();
+}
+
+// Retry server connection
+async function retryConnection() {
+    offlinePrompt.style.display = 'none';
+    await initializeApplication();
+}
+
+window.addEventListener('load', () => {
+    // Initialize language
+    updateLanguage(currentLanguage);
+    
+    // Initialize application
+    initializeApplication();
+});
+
+// Event listeners for loading screen
+continueOfflineBtn.addEventListener('click', continueOffline);
+retryConnectionBtn.addEventListener('click', retryConnection);
+
+// Language selector event listeners
+langEnBtn.addEventListener('click', () => {
+    updateLanguage('en');
+    // Re-translate dynamic content after language change
+    updateLoadingScreenStatuses();
+    updateServerStatus(currentServerStatus);
+    updateFrameCaptureStatuses();
+    updateSessionUI();
+});
+
+langZhBtn.addEventListener('click', () => {
+    updateLanguage('zh');
+    // Re-translate dynamic content after language change
+    updateLoadingScreenStatuses();
+    updateServerStatus(currentServerStatus);
+    updateFrameCaptureStatuses();
+    updateSessionUI();
 });
 
 // Webcam and canvas elements
@@ -1548,22 +1933,26 @@ function initializeFaceMesh() {
 
 // Face Mesh results callback
 function onFaceMeshResults(results) {
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        faceMeshLandmarks = results.multiFaceLandmarks[0];
+    // Only process for Step 3 (Face Rubbing)
+    if (analysisSession.currentStep === 3) {
+        // Initialize canvas context if needed
+        if (!canvasCtx) {
+            canvas.width = webcam.videoWidth;
+            canvas.height = webcam.videoHeight;
+            canvasCtx = canvas.getContext('2d');
+        }
         
-        // Only process for Step 3 (Face Rubbing)
-        if (analysisSession.currentStep === 3) {
-            // Initialize canvas context if needed
-            if (!canvasCtx) {
-                canvas.width = webcam.videoWidth;
-                canvas.height = webcam.videoHeight;
-                canvasCtx = canvas.getContext('2d');
-            }
+        // Always draw video frame to keep preview updating
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        
+        // Process face landmarks if detected
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            faceMeshLandmarks = results.multiFaceLandmarks[0];
             
-            // Clear and draw video frame
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+            // Check if face is within canvas bounds
+            checkFaceInBounds(faceMeshLandmarks);
             
             // Check face rubbing with all detected hands
             if (handLandmarks && handLandmarks.length > 0) {
@@ -1572,9 +1961,46 @@ function onFaceMeshResults(results) {
             
             // Draw overlay on canvas
             drawFaceMeshOverlay(faceMeshLandmarks, handLandmarks);
-            
-            canvasCtx.restore();
+        } else {
+            // No face detected - still draw hand landmarks if available
+            faceMeshLandmarks = null;
+            if (handLandmarks && handLandmarks.length > 0) {
+                drawFaceMeshOverlay(null, handLandmarks);
+            }
         }
+        
+        canvasCtx.restore();
+    }
+}
+
+// Check if face is within canvas bounds (for Step 3)
+function checkFaceInBounds(faceLandmarks) {
+    // Get face bounding box from landmarks
+    let minX = 1, minY = 1, maxX = 0, maxY = 0;
+    
+    // Calculate bounding box from all face landmarks
+    for (const landmark of faceLandmarks) {
+        minX = Math.min(minX, landmark.x);
+        minY = Math.min(minY, landmark.y);
+        maxX = Math.max(maxX, landmark.x);
+        maxY = Math.max(maxY, landmark.y);
+    }
+    
+    // Define boundary thresholds (face should stay within these bounds)
+    const marginThreshold = 0.05; // 5% margin from edges
+    
+    // Check if face is too close to any edge
+    const tooCloseToLeft = minX < marginThreshold;
+    const tooCloseToRight = maxX > (1 - marginThreshold);
+    const tooCloseToTop = minY < marginThreshold;
+    const tooCloseToBottom = maxY > (1 - marginThreshold);
+    
+    if (tooCloseToLeft || tooCloseToRight || tooCloseToTop || tooCloseToBottom) {
+        // Show warning toast
+        showWarningToast(t('warning.centerFace'));
+    } else {
+        // Face is properly centered, hide warning
+        hideWarningToast();
     }
 }
 
@@ -1753,6 +2179,25 @@ function updateFaceRubbingUI() {
 
 // Hands detection results callback
 function onHandsDetectionResults(results) {
+    // For Step 2 (Palm Detection), always draw the canvas to keep preview updating
+    if (analysisSession.currentStep === 2) {
+        // Initialize canvas context if needed
+        if (!canvasCtx) {
+            canvas.width = webcam.videoWidth;
+            canvas.height = webcam.videoHeight;
+            canvasCtx = canvas.getContext('2d');
+        }
+        
+        // Always draw video frame to keep preview updating
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        
+        // Note: Hand landmarks drawing removed for better performance
+        
+        canvasCtx.restore();
+    }
+    
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         handDetected = true;
         // Store all detected hands (array) for face rubbing step
@@ -2057,7 +2502,7 @@ function onFaceDetectionResults(results) {
         canvasCtx = canvas.getContext('2d');
     }
     
-    // Clear canvas and draw the video frame
+    // Always draw the video frame to keep preview updating
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
     canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
@@ -2082,7 +2527,7 @@ function onFaceDetectionResults(results) {
         
         // Show warning toast if face is not centered (for steps that need it, but skip step 1 OCR)
         if (analysisSession.currentStep > 0 && analysisSession.currentStep !== 1 && analysisSession.isActive && !faceCentered) {
-            showWarningToast('Please keep your face in the center frame');
+            showWarningToast(t('warning.centerFace'));
         } else if (faceCentered || analysisSession.currentStep === 1) {
             hideWarningToast();
         }
@@ -2128,9 +2573,10 @@ function onFaceDetectionResults(results) {
         faceDetected = false;
         faceCentered = false;
         
-        // Show warning if face not detected and we're past step 2 (but skip step 3)
-        if (analysisSession.currentStep > 2 && analysisSession.currentStep !== 3 && analysisSession.isActive) {
-            showWarningToast('Face not detected - please stay in frame');
+        // Don't show warning for step 2 - palm detection doesn't require face tracking
+        // Only show warning on step 0 (preliminaries)
+        if (analysisSession.currentStep === 0 && analysisSession.isActive) {
+            showWarningToast(t('warning.faceNotDetected'));
         }
         
         // Update button state in real-time for step 0 (preliminaries)
@@ -2211,7 +2657,7 @@ function onFaceDetectionResults(results) {
         canvasCtx.stroke();
         
         // Draw instruction text with background
-        const instructionText = 'Place product label in this area';
+        const instructionText = t('overlay.placeLabel');
         canvasCtx.font = 'bold 22px Arial';
         canvasCtx.textAlign = 'center';
         const textMetrics = canvasCtx.measureText(instructionText);
@@ -2258,7 +2704,7 @@ function onFaceDetectionResults(results) {
         canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.6)';
         canvasCtx.font = 'bold 14px Arial';
         canvasCtx.textAlign = 'center';
-        canvasCtx.fillText('▼ AUTO SCAN ▼', 0, 0);
+        canvasCtx.fillText(t('overlay.autoScan'), 0, 0);
         canvasCtx.restore();
     }
     
@@ -2319,19 +2765,16 @@ async function enableCamera() {
                 else if (analysisSession.currentStep === 1) {
                     await faceDetection.send({image: webcam});
                 }
-                // Step 2 (Palm Detection): Need hands detection + face detection to ensure subject stays in frame
+                // Step 2 (Palm Detection): Only need hands detection (no face tracking needed)
                 else if (analysisSession.currentStep === 2) {
-                    await Promise.all([
-                        faceDetection.send({image: webcam}),
-                        handsDetection.send({image: webcam})
-                    ]);
+                    await handsDetection.send({image: webcam});
                 }
-                // Step 3 (Face Rubbing): Need both hands and face mesh
+                // Step 3 (Face Rubbing): Need both models - run in parallel for better FPS
                 else if (analysisSession.currentStep === 3) {
-                    // Run hands and face mesh in parallel for better performance
+                    // Run both models in parallel instead of sequentially
                     await Promise.all([
-                        handsDetection.send({image: webcam}),
-                        faceMesh.send({image: webcam})
+                        faceMesh.send({image: webcam}),
+                        handsDetection.send({image: webcam})
                     ]);
                 }
             },

@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Medichek - Medication Application Tracker</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="alternate icon" href="./favicon.svg">
+    
     <link rel="stylesheet" href="./static/style.css">
     
     <!-- MediaPipe Dependencies -->
@@ -28,33 +33,70 @@
     
     <!-- Medichek Configuration -->
     <script src="./static/config.js"></script>
+    
+    <!-- Translations -->
+    <script src="./static/translations.js"></script>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2 class="loading-title" data-i18n="loading.title">Initializing Medichek</h2>
+            <p class="loading-message" data-i18n="loading.message">Checking server connections...</p>
+            <div id="server-check-status" class="server-check-status">
+                <div class="server-check-item">
+                    <span class="check-label" data-i18n="loading.django">Django Server:</span>
+                    <span id="django-check" class="check-status checking" data-i18n="loading.checking">Checking...</span>
+                </div>
+                <div class="server-check-item">
+                    <span class="check-label" data-i18n="loading.minio">MinIO Server:</span>
+                    <span id="minio-check" class="check-status checking" data-i18n="loading.checking">Checking...</span>
+                </div>
+            </div>
+            <div id="offline-prompt" class="offline-prompt" style="display: none;">
+                <p class="offline-message" data-i18n="loading.offline.warning">⚠️ Some services are unavailable. You can continue in offline mode.</p>
+                <p class="offline-details" data-i18n="loading.offline.details">Offline mode will download analysis data locally instead of uploading to servers.</p>
+                <div class="offline-actions">
+                    <button id="continue-offline-btn" class="btn btn-primary" data-i18n="loading.offline.continue">Continue Offline</button>
+                    <button id="retry-connection-btn" class="btn btn-secondary" data-i18n="loading.offline.retry">Retry Connection</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div class="container">
+        <!-- Language Selector -->
+        <div class="language-selector">
+            <button id="lang-en" class="lang-btn active" data-lang="en">English</button>
+            <button id="lang-zh" class="lang-btn" data-lang="zh">简体中文</button>
+        </div>
+        
         <!-- Status Bar -->
         <div class="status-panel">
             <div class="status-item">
-                <span class="status-label">Server:</span>
-                <span id="server-status" class="status-badge checking">Checking...</span>
+                <span class="status-label" data-i18n="status.server">Server:</span>
+                <span id="server-status" class="status-badge checking" data-i18n="status.checking">Checking...</span>
             </div>
             <div class="status-item">
-                <span class="status-label">Session:</span>
-                <span id="session-id" class="status-value">None</span>
+                <span class="status-label" data-i18n="status.session">Session:</span>
+                <span id="session-id" class="status-value" data-i18n="status.none">None</span>
             </div>
             <div class="status-item">
-                <span class="status-label">Step:</span>
+                <span class="status-label" data-i18n="status.step">Step:</span>
                 <span id="current-step" class="status-value">0/5</span>
             </div>
         </div>
 
         <!-- Captured Frame Preview Area (Always visible - attached to status bar) -->
         <div id="captured-frame-area" class="captured-frame-area empty">
+            <div class="captured-frame-placeholder" data-i18n="frame.placeholder">Captured frames will appear here</div>
             <div class="captured-frame-content">
                 <div class="captured-frames-grid">
                     <!-- Step 3: Product Label Capture -->
                     <div class="frame-slot" id="step3-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label">Step 1</span>
+                            <span class="frame-label" data-i18n="frame.step1">Step 1</span>
                             <span id="ocr-status" class="ocr-status"></span>
                         </div>
                         <canvas id="step3-frame-canvas" class="frame-canvas"></canvas>
@@ -64,7 +106,7 @@
                     <!-- Step 4: Palm Detection Capture -->
                     <div class="frame-slot" id="step4-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label">Step 2</span>
+                            <span class="frame-label" data-i18n="frame.step2">Step 2</span>
                             <span id="palm-status" class="palm-status"></span>
                         </div>
                         <canvas id="step4-frame-canvas" class="frame-canvas"></canvas>
@@ -105,16 +147,45 @@
                 <!-- Hand Out of Bounds Warning -->
                 <div id="hand-bounds-warning" class="hand-bounds-warning">
                     <span class="warning-icon">⚠️</span>
-                    <span class="warning-text">Keep hand in frame</span>
+                    <span class="warning-text" data-i18n="warning.keepInFrame">Keep hand in frame</span>
                 </div>
             </div>
 
             <!-- Action Button Container -->
             <div class="action-button-container">
-                <button id="start-tracking" class="btn btn-primary">Start</button>
-                <button id="next-step" class="btn btn-primary" style="display: none;">Next Step</button>
-                <button id="capture-frame" class="btn btn-primary" style="display: none;">Manual Capture</button>
-                <button id="submit-analysis" class="btn btn-success" style="display: none;">Submit Analysis</button>
+                <button id="start-tracking" class="btn btn-primary" data-i18n="button.start">Start</button>
+                <button id="next-step" class="btn btn-primary" style="display: none;" data-i18n="button.nextStep">Next Step</button>
+                <button id="capture-frame" class="btn btn-primary" style="display: none;" data-i18n="button.manualCapture">Manual Capture</button>
+                <button id="finish-session" class="btn btn-success" style="display: none;" data-i18n="button.finish">Finish</button>
+            </div>
+        </div>
+        
+        <!-- Review/Finish Screen -->
+        <div id="review-screen" class="completion-screen" style="display: none;">
+            <div class="completion-content">
+                <div class="completion-icon">✅</div>
+                <h2 class="completion-title" data-i18n="review.title">Session Complete!</h2>
+                <p class="completion-message" data-i18n="review.message">You have completed all steps. What would you like to do?</p>
+                <div class="completion-details">
+                    <div class="review-summary">
+                        <div class="review-item">
+                            <span class="review-label" data-i18n="review.ocr">Product Label:</span>
+                            <span id="review-ocr-status" class="review-value" data-i18n="review.captured">✓ Captured</span>
+                        </div>
+                        <div class="review-item">
+                            <span class="review-label" data-i18n="review.palm">Hand Detection:</span>
+                            <span id="review-palm-status" class="review-value" data-i18n="review.captured">✓ Captured</span>
+                        </div>
+                        <div class="review-item">
+                            <span class="review-label" data-i18n="review.face">Face Rubbing:</span>
+                            <span id="review-face-status" class="review-value" data-i18n="review.completed">✓ Completed</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="submit-analysis-btn" class="btn btn-success" data-i18n="review.submit">Submit Analysis</button>
+                    <button id="restart-session-btn" class="btn btn-secondary" data-i18n="review.restart">Restart Session</button>
+                </div>
             </div>
         </div>
 
@@ -123,19 +194,50 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <span class="modal-icon">⚠️</span>
-                    <h3 class="modal-title">Product Label Not Recognized</h3>
+                    <h3 class="modal-title" data-i18n="ocr.fail.title">Product Label Not Recognized</h3>
                 </div>
                 <div class="modal-body">
-                    <p>The automatic verification could not detect the product label the captured image.</p>
-                    <p><strong>What would you like to do?</strong></p>
+                    <p data-i18n="ocr.fail.message">The automatic verification could not detect the product label the captured image.</p>
+                    <p><strong data-i18n="ocr.fail.question">What would you like to do?</strong></p>
                     <ul>
-                        <li><strong>Retry:</strong> Capture a new image with better lighting or positioning</li>
-                        <li><strong>Continue:</strong> Submit the image for manual review</li>
+                        <li><strong data-i18n="ocr.fail.retryLabel">Retry:</strong> <span data-i18n="ocr.fail.retry">Capture a new image with better lighting or positioning</span></li>
+                        <li><strong data-i18n="ocr.fail.continueLabel">Continue:</strong> <span data-i18n="ocr.fail.continue">Submit the image for manual review</span></li>
                     </ul>
                 </div>
                 <div class="modal-actions">
-                    <button id="retry-ocr" class="btn btn-primary">Retry Capture</button>
-                    <button id="continue-anyway" class="btn btn-secondary">Continue</button>
+                    <button id="retry-ocr" class="btn btn-primary" data-i18n="ocr.fail.retryBtn">Retry Capture</button>
+                    <button id="continue-anyway" class="btn btn-secondary" data-i18n="ocr.fail.continueBtn">Continue</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recording Consent Modal -->
+        <div id="recording-consent-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-icon">🎥</span>
+                    <h3 class="modal-title" data-i18n="consent.title">Video Recording Consent</h3>
+                </div>
+                <div class="modal-body">
+                    <p data-i18n="consent.intro">This application will record video of each step for quality assurance and analysis purposes.</p>
+                    <p><strong data-i18n="consent.whatRecorded">What will be recorded:</strong></p>
+                    <ul>
+                        <li data-i18n="consent.record1">Video of your face and hand movements during each step</li>
+                        <li data-i18n="consent.record2">Product label capture</li>
+                        <li data-i18n="consent.record3">Hand palm detection</li>
+                        <li data-i18n="consent.record4">Face rubbing verification</li>
+                    </ul>
+                    <p><strong data-i18n="consent.privacy">Your privacy:</strong></p>
+                    <ul>
+                        <li data-i18n="consent.privacy1">Videos will be saved securely</li>
+                        <li data-i18n="consent.privacy2">Data is used only for analysis purposes</li>
+                        <li data-i18n="consent.privacy3">You can download your session data at the end</li>
+                    </ul>
+                    <p class="consent-note"><strong>Note:</strong> <span data-i18n="consent.note">Video recording is required to proceed with the tracking session.</span></p>
+                </div>
+                <div class="modal-actions">
+                    <button id="accept-recording-btn" class="btn btn-success" data-i18n="consent.accept">Accept & Continue</button>
+                    <button id="decline-recording-btn" class="btn btn-secondary" data-i18n="consent.decline">Decline</button>
                 </div>
             </div>
         </div>
@@ -144,7 +246,7 @@
         <div id="ocr-analysis-overlay" class="ocr-analysis-overlay" style="display: none;">
             <div class="ocr-analysis-content">
                 <div class="ocr-spinner"></div>
-                <div class="ocr-analysis-text">Analyzing product label...</div>
+                <div class="ocr-analysis-text" data-i18n="ocr.analyzing">Analyzing product label...</div>
             </div>
         </div>
         
@@ -152,8 +254,8 @@
         <div id="upload-overlay" class="upload-overlay" style="display: none;">
             <div class="upload-content">
                 <div class="upload-spinner"></div>
-                <div class="upload-text">Uploading session data...</div>
-                <div class="upload-progress">Please wait, do not close this window</div>
+                <div class="upload-text" data-i18n="upload.uploading">Uploading session data...</div>
+                <div class="upload-progress" data-i18n="upload.wait">Please wait, do not close this window</div>
             </div>
         </div>
         
@@ -161,8 +263,8 @@
         <div id="download-overlay" class="upload-overlay" style="display: none;">
             <div class="upload-content">
                 <div class="upload-spinner"></div>
-                <div class="upload-text">Generating zip file...</div>
-                <div class="upload-progress">Please wait, preparing your download</div>
+                <div class="upload-text" data-i18n="download.generating">Generating zip file...</div>
+                <div class="upload-progress" data-i18n="download.wait">Please wait, preparing your download</div>
             </div>
         </div>
         
@@ -173,7 +275,10 @@
                 <h2 id="completion-title" class="completion-title">Upload Complete</h2>
                 <p id="completion-message" class="completion-message"></p>
                 <div id="completion-details" class="completion-details"></div>
-                <button id="start-new-session-btn" class="btn btn-primary">Start New Session</button>
+                <div class="completion-actions">
+                    <button id="download-analysis-btn" class="btn btn-secondary" style="display: none;" data-i18n="completion.downloadBtn">Download Analysis</button>
+                    <button id="start-new-session-btn" class="btn btn-primary" data-i18n="completion.newSession">Start New Session</button>
+                </div>
             </div>
         </div>
     </div>

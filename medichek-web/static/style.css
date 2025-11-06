@@ -21,6 +21,43 @@ body {
     background: #1a1a1a;
 }
 
+/* Language Selector */
+.language-selector {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    gap: 5px;
+    z-index: 2000;
+    background: rgba(26, 26, 26, 0.95);
+    padding: 5px;
+    border-radius: 8px;
+    border: 1px solid #3a3a3a;
+}
+
+.lang-btn {
+    padding: 6px 12px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.lang-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #b0b0b0;
+}
+
+.lang-btn.active {
+    background: #4CAF50;
+    color: #ffffff;
+}
+
 .status-panel {
     position: fixed;
     top: 0;
@@ -85,10 +122,17 @@ body {
     border-bottom: 2px dashed #3a3a3a;
 }
 
-.captured-frame-area.empty::before {
-    content: 'Captured frames will appear here';
+.captured-frame-placeholder {
     color: #666;
     font-size: 0.85em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.captured-frame-area:not(.empty) .captured-frame-placeholder {
+    display: none;
 }
 
 .captured-frame-area.empty .captured-frame-content {
@@ -748,6 +792,19 @@ body {
     .countdown-overlay #countdown-number {
         font-size: 120px;
     }
+    
+    /* Language selector mobile adjustments */
+    .language-selector {
+        bottom: 10px;
+        left: 10px;
+        padding: 3px;
+        gap: 3px;
+    }
+    
+    .lang-btn {
+        padding: 5px 10px;
+        font-size: 0.75em;
+    }
 }
 
 /* Extra small phones */
@@ -828,6 +885,21 @@ body {
         padding: 10px 25px;
         font-size: 0.95em;
     }
+    
+    /* Language selector extra small mobile */
+    .language-selector {
+        bottom: 5px;
+        left: 5px;
+        padding: 2px;
+        gap: 2px;
+        border-radius: 6px;
+    }
+    
+    .lang-btn {
+        padding: 4px 8px;
+        font-size: 0.7em;
+        border-radius: 4px;
+    }
 }
 
 /* Modal Styles */
@@ -906,6 +978,15 @@ body {
 
 .modal-body li {
     margin-bottom: 10px;
+}
+
+.consent-note {
+    margin-top: 15px;
+    padding: 12px;
+    background: rgba(255, 165, 0, 0.1);
+    border-left: 3px solid #ffa500;
+    border-radius: 4px;
+    color: #ffa500;
 }
 
 .modal-actions {
@@ -1259,22 +1340,233 @@ body {
     margin: 5px 0;
 }
 
+.completion-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    width: 100%;
+}
+
+.completion-actions .btn {
+    min-width: 160px;
+}
+
+.review-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.review-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.review-item:last-child {
+    border-bottom: none;
+}
+
+.review-label {
+    color: #b0b0b0;
+    font-size: 0.95em;
+}
+
+.review-value {
+    color: #4CAF50;
+    font-weight: 500;
+}
+
+/* Loading Screen */
+.loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.98);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    pointer-events: all;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 25px;
+    padding: 50px 40px;
+    background: rgba(30, 30, 30, 0.98);
+    border-radius: 16px;
+    max-width: 500px;
+    text-align: center;
+}
+
+.loading-spinner {
+    width: 80px;
+    height: 80px;
+    border: 6px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #4CAF50;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-title {
+    color: #ffffff;
+    font-size: 1.8em;
+    font-weight: 600;
+    margin: 0;
+}
+
+.loading-message {
+    color: #b0b0b0;
+    font-size: 1.1em;
+    margin: 0;
+}
+
+.server-check-status {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+}
+
+.server-check-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.check-label {
+    color: #b0b0b0;
+    font-size: 1em;
+}
+
+.check-status {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.check-status.checking {
+    background: rgba(255, 165, 0, 0.2);
+    color: #ffa500;
+}
+
+.check-status.online {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+}
+
+.check-status.offline {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+.offline-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+    background: rgba(255, 165, 0, 0.1);
+    border: 2px solid rgba(255, 165, 0, 0.3);
+    border-radius: 8px;
+    width: 100%;
+}
+
+.offline-message {
+    color: #ffa500;
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 0;
+}
+
+.offline-details {
+    color: #b0b0b0;
+    font-size: 0.95em;
+    margin: 0;
+}
+
+.offline-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
 /* Mobile upload/completion adjustments */
 @media (max-width: 480px) {
     .upload-content,
-    .completion-content {
+    .completion-content,
+    .loading-content {
         padding: 30px 25px;
         max-width: 90%;
     }
     
-    .upload-spinner {
+    .upload-spinner,
+    .loading-spinner {
         width: 60px;
         height: 60px;
         border-width: 4px;
     }
     
-    .upload-text {
+    .upload-text,
+    .loading-title {
         font-size: 1.1em;
+    }
+    
+    .loading-message {
+        font-size: 0.95em;
+    }
+    
+    .server-check-status {
+        padding: 15px;
+    }
+    
+    .check-label {
+        font-size: 0.9em;
+    }
+    
+    .offline-prompt {
+        padding: 15px;
+    }
+    
+    .offline-message {
+        font-size: 1em;
+    }
+    
+    .offline-details {
+        font-size: 0.85em;
+    }
+    
+    .offline-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .offline-actions .btn {
+        width: 100%;
+    }
+    
+    .completion-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .completion-actions .btn {
+        width: 100%;
     }
     
     .completion-icon {
