@@ -1,6 +1,5 @@
 # Medichek Remote Medical Examination Web Program
 :warning: **By using this application, you must consent to being recorded and having those recordings uploaded to our minio server.**
-This data will be kept for a maximum of one year.
 
 Allows doctors to monitor patients taking their medications to ensure proper application/usage.
 
