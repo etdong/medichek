@@ -16,8 +16,7 @@
     <!-- Tesseract.js for OCR -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     
-    <!-- Medichek Configuration -->
-    <script src="/static/config.js"></script>
+    <!-- Medichek Configuration moved to ES modules under /static/js/ -->
 </head>
 <body>
     <div class="container">
@@ -62,6 +61,17 @@
                 <span class="toast-icon">⚠️</span>
                 <span class="toast-message">Please keep your face in the center frame</span>
             </div>
+            <!-- OCR failure modal (shown when manual capture OCR fails) -->
+            <div id="ocr-fail-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>Could not find product label</h3>
+                    <p>Please try again or continue without a detected label.</p>
+                    <div class="modal-actions">
+                        <button id="retry-ocr-btn" class="btn btn-secondary">Retry Capture</button>
+                        <button id="continue-anyway-btn" class="btn btn-primary">Continue Anyway</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Single action button container -->
@@ -79,6 +89,29 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- Review and Completion screens (rendered after session end) -->
+    <div id="review-screen" class="review-screen" style="display: none;">
+        <div class="completion-content">
+            <h2>Session Review</h2>
+            <p>Your session has completed. Review the captured frames and recordings below.</p>
+            <div class="review-actions">
+                <button id="start-new-session" class="btn">Start New Session</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="completion-screen" class="completion-screen" style="display: none;">
+        <div class="completion-content">
+            <h2 class="completion-title">Session Complete</h2>
+            <p class="completion-message">Thank you — your session data is ready for submission.</p>
+            <div class="completion-actions">
+                <button id="submit-analysis" class="btn btn-primary">Submit Analysis</button>
+                <button id="restart-session" class="btn btn-secondary">Restart Session</button>
+                <button id="download-analysis" class="btn">Download Analysis</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

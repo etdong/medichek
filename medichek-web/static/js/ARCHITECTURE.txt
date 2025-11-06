@@ -1,0 +1,123 @@
+                                  MEDICHEK MODULAR ARCHITECTURE
+                                  ==============================
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                   index.html                                     │
+│                     <script type="module" src="js/main.js">                     │
+└───────────────────────────────────┬─────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                          ┌─────────────────┐
+                          │    main.js      │  ← Entry point
+                          │  - Initialize   │
+                          │  - Orchestrate  │
+                          └────────┬────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │              │
+                    ▼              ▼              ▼
+          ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+          │   config.js  │ │ mediapipe-   │ │dom-elements  │
+          │              │ │  state.js    │ │    .js       │
+          │ ✅ CREATED  │ │ ✅ CREATED  │ │ ✅ CREATED  │
+          └──────────────┘ └──────────────┘ └──────────────┘
+                    │              │              │
+                    └──────────────┼──────────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              │                    │                    │
+              ▼                    ▼                    ▼
+     ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+     │translations  │    │   utils.js   │    │ui-manager.js │
+     │    .js       │    │              │    │              │
+     │ ⏳ TODO      │    │ ⏳ TODO      │    │ ⏳ TODO      │
+     └──────────────┘    └──────────────┘    └──────────────┘
+              │                    │                    │
+              └────────────────────┼────────────────────┘
+                                   │
+         ┌─────────────────────────┼─────────────────────────┐
+         │                         │                         │
+         ▼                         ▼                         ▼
+┌──────────────┐          ┌──────────────┐        ┌──────────────┐
+│  camera.js   │          │mediapipe-    │        │session-      │
+│              │          │  init.js     │        │manager.js    │
+│ ⏳ TODO      │          │ ⏳ TODO      │        │ ⏳ TODO      │
+└──────────────┘          └──────────────┘        └──────────────┘
+         │                         │                         │
+         │         ┌───────────────┼───────────────┐         │
+         │         │               │               │         │
+         │         ▼               ▼               ▼         │
+         │  ┌──────────┐   ┌──────────┐   ┌──────────┐     │
+         │  │  face-   │   │  hand-   │   │  face-   │     │
+         │  │detection │   │detection │   │  mesh.js │     │
+         │  │   .js    │   │   .js    │   │          │     │
+         │  │⏳ TODO   │   │⏳ TODO   │   │⏳ TODO   │     │
+         │  └──────────┘   └──────────┘   └──────────┘     │
+         │         │               │               │         │
+         │         └───────────────┼───────────────┘         │
+         │                         │                         │
+         │         ┌───────────────┼───────────────┐         │
+         │         │               │               │         │
+         │         ▼               ▼               ▼         │
+         │  ┌──────────┐   ┌──────────┐   ┌──────────┐     │
+         │  │   ocr-   │   │ upload-  │   │ server-  │     │
+         │  │ handler  │   │ manager  │   │ manager  │     │
+         │  │   .js    │   │   .js    │   │   .js    │     │
+         │  │⏳ TODO   │   │⏳ TODO   │   │⏳ TODO   │     │
+         │  └──────────┘   └──────────┘   └──────────┘     │
+         │                                                   │
+         └───────────────────────┬───────────────────────────┘
+                                 │
+                                 ▼
+                        ┌──────────────┐
+                        │event-handlers│
+                        │    .js       │
+                        │ ⏳ TODO      │
+                        └──────────────┘
+
+                        DEPENDENCY FLOW
+                        ===============
+
+        Low Level (Pure State)  →  Mid Level (Logic)  →  High Level (Integration)
+              ├─ config.js             ├─ utils.js           ├─ main.js
+              ├─ mediapipe-state.js    ├─ ui-manager.js      ├─ session-manager.js
+              └─ dom-elements.js       ├─ camera.js          ├─ event-handlers.js
+                                       ├─ mediapipe-init.js  └─ upload-manager.js
+                                       ├─ face-detection.js
+                                       ├─ hand-detection.js
+                                       ├─ face-mesh.js
+                                       ├─ ocr-handler.js
+                                       └─ server-manager.js
+
+                        MODULE SIZES
+                        ============
+
+        ✅ config.js             65 lines   (Created)
+        ✅ mediapipe-state.js    90 lines   (Created)
+        ✅ dom-elements.js       65 lines   (Created)
+        ⏳ translations.js       200 lines  (To Do)
+        ⏳ utils.js              150 lines  (To Do)
+        ⏳ ui-manager.js         300 lines  (To Do)
+        ⏳ camera.js             200 lines  (To Do)
+        ⏳ mediapipe-init.js     150 lines  (To Do)
+        ⏳ face-detection.js     200 lines  (To Do)
+        ⏳ hand-detection.js     300 lines  (To Do)
+        ⏳ face-mesh.js          400 lines  (To Do)
+        ⏳ ocr-handler.js        300 lines  (To Do)
+        ⏳ session-manager.js    400 lines  (To Do)
+        ⏳ upload-manager.js     400 lines  (To Do)
+        ⏳ server-manager.js     200 lines  (To Do)
+        ⏳ event-handlers.js     150 lines  (To Do)
+        ⏳ main.js               100 lines  (To Do)
+        ─────────────────────────────────────────
+        TOTAL:                   ~3,670 lines (original 2,950)
+
+        Note: Total is higher due to exports, imports, and better documentation
+
+                        LEGEND
+                        ======
+
+        ✅ = Created and ready
+        ⏳ = To be created
+        → = Imports from
+        ▼ = Orchestrates

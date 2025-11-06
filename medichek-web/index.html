@@ -31,11 +31,7 @@
     <!-- Environment Variables (optional - copy env.example.js to env.js) -->
     <script src="./env.js" onerror="console.log('env.js not found - using defaults from config.js')"></script>
     
-    <!-- Medichek Configuration -->
-    <script src="./static/config.js"></script>
-    
-    <!-- Translations -->
-    <script src="./static/translations.js"></script>
+    <!-- Medichek Configuration and translations moved to ES modules under /static/js/ -->
 </head>
 <body>
     <!-- Loading Screen -->
@@ -283,6 +279,6 @@
         </div>
     </div>
 
-    <script src="./static/script.js"></script>
+    <script type="module" src="./static/js/main.js"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
 // For development, you can create a .env file (do NOT commit to git!)
 // For production, set these as actual environment variables
 const ENV = {
-    SERVER_URL: window.ENV?.SERVER_URL || 'http://127.0.0.1:8000',
+    SERVER_URL: window.ENV?.SERVER_URL || 'http://127.0.0.1:9000',
     PRODUCTION_SERVER_URL: window.ENV?.PRODUCTION_SERVER_URL || 'https://your-django-server.com',
     MINIO_ENDPOINT: window.ENV?.MINIO_ENDPOINT || 'localhost',
     MINIO_PORT: window.ENV?.MINIO_PORT || 9000,
