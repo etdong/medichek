@@ -4,7 +4,7 @@ const SERVER_URL = (window.MedichekConfig && window.MedichekConfig.getServerUrl(
 
 // Offline mode flag
 let offlineMode = false;
-let flaskOnline = false;
+let serverOnline = false;
 let minioOnline = false;
 
 // Current server status (for re-translation when language changes)
@@ -111,7 +111,7 @@ const langEnBtn = document.getElementById('lang-en');
 const langZhBtn = document.getElementById('lang-zh');
 
 const loadingScreen = document.getElementById('loading-screen');
-const flaskCheckStatus = document.getElementById('flask-check');
+const serverCheckStatus = document.getElementById('server-check');
 const minioCheckStatus = document.getElementById('minio-check');
 const offlinePrompt = document.getElementById('offline-prompt');
 const continueOfflineBtn = document.getElementById('continue-offline-btn');
@@ -208,11 +208,11 @@ function updateServerStatus(status) {
 function updateLoadingScreenStatuses() {
     // Update Status
     if (currentServerStatus === 'checking') {
-        flaskCheckStatus.textContent = t('loading.checking');
+        serverCheckStatus.textContent = t('loading.checking');
     } else if (currentServerStatus === 'online') {
-        flaskCheckStatus.textContent = t('loading.online');
+        serverCheckStatus.textContent = t('loading.online');
     } else if (currentServerStatus === 'offline') {
-        flaskCheckStatus.textContent = t('loading.offline');
+        serverCheckStatus.textContent = t('loading.offline');
     }
     
     // Update MinIO status
@@ -1765,19 +1765,19 @@ async function checkMinIOServer() {
 async function initializeApplication() {
     // Check Server
     currentServerStatus = 'checking';
-    flaskCheckStatus.textContent = t('loading.checking');
-    flaskCheckStatus.className = 'check-status checking';
-    
-    flaskOnline = await checkServerServer();
-    
-    if (flaskOnline) {
+    serverCheckStatus.textContent = t('loading.checking');
+    serverCheckStatus.className = 'check-status checking';
+
+    serverOnline = await checkServer();
+
+    if (serverOnline) {
         currentServerStatus = 'online';
-        flaskCheckStatus.textContent = t('loading.online');
-        flaskCheckStatus.className = 'check-status online';
+        serverCheckStatus.textContent = t('loading.online');
+        serverCheckStatus.className = 'check-status online';
     } else {
         currentServerStatus = 'offline';
-        flaskCheckStatus.textContent = t('loading.offline');
-        flaskCheckStatus.className = 'check-status offline';
+        serverCheckStatus.textContent = t('loading.offline');
+        serverCheckStatus.className = 'check-status offline';
     }
     
     // Check MinIO server
@@ -1798,7 +1798,7 @@ async function initializeApplication() {
     }
     
     // If both servers are online, proceed normally
-    if (flaskOnline && minioOnline) {
+    if (serverOnline && minioOnline) {
         offlineMode = false;
         updateServerStatus('Connected');
         hideLoadingScreen();

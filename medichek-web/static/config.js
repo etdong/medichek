@@ -5,8 +5,8 @@
 // For development, you can create a .env file (do NOT commit to git!)
 // For production, set these as actual environment variables
 const ENV = {
-    DJANGO_SERVER_URL: window.ENV?.DJANGO_SERVER_URL || 'http://127.0.0.1:8000',
-    PRODUCTION_DJANGO_URL: window.ENV?.PRODUCTION_DJANGO_URL || 'https://your-django-server.com',
+    SERVER_URL: window.ENV?.SERVER_URL || 'http://127.0.0.1:8000',
+    PRODUCTION_SERVER_URL: window.ENV?.PRODUCTION_SERVER_URL || 'https://your-django-server.com',
     MINIO_ENDPOINT: window.ENV?.MINIO_ENDPOINT || 'localhost',
     MINIO_PORT: window.ENV?.MINIO_PORT || 9000,
     MINIO_USE_SSL: window.ENV?.MINIO_USE_SSL === 'true' || false,
@@ -18,25 +18,25 @@ const ENV = {
 };
 
 const MedichekConfig = {
-    // Django Backend Server URL
-    djangoServerUrl: ENV.DJANGO_SERVER_URL,
+    // Backend Server URL
+    serverUrl: ENV.SERVER_URL,
     
     // Auto-detect environment (optional)
     // This will use different URLs for localhost vs production
     useAutoDetect: false,
-    
-    // Production Django URL (used when useAutoDetect is true and not on localhost)
-    productionDjangoUrl: ENV.PRODUCTION_DJANGO_URL,
-    
-    // Get the appropriate Django URL based on configuration
-    getDjangoUrl: function() {
+
+    // Production Server URL (used when useAutoDetect is true and not on localhost)
+    productionServerUrl: ENV.PRODUCTION_SERVER_URL,
+
+    // Get the appropriate Server URL based on configuration
+    getServerUrl: function() {
         if (this.useAutoDetect) {
             const isLocalhost = window.location.hostname === 'localhost' || 
                               window.location.hostname === '127.0.0.1' ||
                               window.location.hostname === '';
-            return isLocalhost ? this.djangoServerUrl : this.productionDjangoUrl;
+            return isLocalhost ? this.serverUrl : this.productionServerUrl;
         }
-        return this.djangoServerUrl;
+        return this.serverUrl;
     },
     
     // MinIO Configuration
