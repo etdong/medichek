@@ -1,15 +1,14 @@
 // Configuration - use external config if available, otherwise fallback
-const DJANGO_SERVER_URL = (window.MedichekConfig && window.MedichekConfig.getDjangoUrl()) 
+const SERVER_URL = (window.MedichekConfig && window.MedichekConfig.getServerUrl()) 
     || 'http://127.0.0.1:8000';
 
 // Offline mode flag
 let offlineMode = false;
-let djangoOnline = false;
+let flaskOnline = false;
 let minioOnline = false;
 
 // Current server status (for re-translation when language changes)
-let currentServerStatus = 'Checking...';
-let currentDjangoStatus = 'checking'; // 'checking', 'online', or 'offline'
+let currentServerStatus = 'checking'; // 'checking', 'online', or 'offline'
 let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'
 
 // Current frame capture statuses (for re-translation when language changes)
@@ -112,7 +111,7 @@ const langEnBtn = document.getElementById('lang-en');
 const langZhBtn = document.getElementById('lang-zh');
 
 const loadingScreen = document.getElementById('loading-screen');
-const djangoCheckStatus = document.getElementById('django-check');
+const flaskCheckStatus = document.getElementById('flask-check');
 const minioCheckStatus = document.getElementById('minio-check');
 const offlinePrompt = document.getElementById('offline-prompt');
 const continueOfflineBtn = document.getElementById('continue-offline-btn');
@@ -207,13 +206,13 @@ function updateServerStatus(status) {
 
 // Update loading screen status checks with current language
 function updateLoadingScreenStatuses() {
-    // Update Django status
-    if (currentDjangoStatus === 'checking') {
-        djangoCheckStatus.textContent = t('loading.checking');
-    } else if (currentDjangoStatus === 'online') {
-        djangoCheckStatus.textContent = t('loading.online');
-    } else if (currentDjangoStatus === 'offline') {
-        djangoCheckStatus.textContent = t('loading.offline');
+    // Update Status
+    if (currentServerStatus === 'checking') {
+        flaskCheckStatus.textContent = t('loading.checking');
+    } else if (currentServerStatus === 'online') {
+        flaskCheckStatus.textContent = t('loading.online');
+    } else if (currentServerStatus === 'offline') {
+        flaskCheckStatus.textContent = t('loading.offline');
     }
     
     // Update MinIO status
@@ -396,11 +395,11 @@ function updateSessionUI() {
 
 // API functions
 async function checkServer() {
-    addLog('Checking Django server connection...');
+    addLog('Checking Server connection...');
     updateServerStatus('Checking...');
     
     try {
-        const response = await fetch(`${DJANGO_SERVER_URL}/api/health/`, {
+        const response = await fetch(`${SERVER_URL}/api/health/`, {
             method: 'GET',
             mode: 'cors',
             headers: {
@@ -414,11 +413,11 @@ async function checkServer() {
         
         const data = await response.json();
         updateServerStatus('Connected');
-        addLog('✅ Django server is online', 'success');
+        addLog('✅ Server is online', 'success');
         updateResponse(data);
     } catch (error) {
         updateServerStatus('Disconnected');
-        addLog('⚠️ Django server offline (can still track locally)', 'warning');
+        addLog('⚠️ Server offline (can still track locally)', 'warning');
         updateResponse({ error: error.message, note: 'Client can operate offline' });
     }
 }
@@ -1175,14 +1174,14 @@ async function submitAnalysis() {
                 addLog('✅ MinIO upload completed, URLs captured', 'success');
             }
         } catch (error) {
-            addLog('⚠️ MinIO upload failed, continuing with Django submission', 'warning');
+            addLog('⚠️ MinIO upload failed, continuing with analysis submission', 'warning');
         }
     }
     
-    addLog('📤 Submitting analysis results to Django server...');
+    addLog('📤 Submitting analysis results to server...');
     
     try {
-        const response = await fetch(`${DJANGO_SERVER_URL}/api/analysis/submit/`, {
+        const response = await fetch(`${SERVER_URL}/api/analysis/submit/`, {
             method: 'POST',
             mode: 'cors',
             headers: {
@@ -1199,7 +1198,7 @@ async function submitAnalysis() {
         }
         
         const data = await response.json();
-        addLog(`✅ Analysis submitted successfully to Django server!`, 'success');
+        addLog(`✅ Analysis submitted successfully to server!`, 'success');
         updateResponse(data);
     } catch (error) {
         addLog('❌ Failed to submit analysis: ' + error.message, 'error');
@@ -1701,10 +1700,10 @@ downloadAnalysisBtn.addEventListener('click', async () => {
 });
 
 // Initialize
-// Check Django server connection
-async function checkDjangoServer() {
+// Check Server connection
+async function checkServer() {
     try {
-        const response = await fetch(`${DJANGO_SERVER_URL}/api/health/`, {
+        const response = await fetch(`${SERVER_URL}/api/health/`, {
             method: 'GET',
             mode: 'cors',
             headers: {
@@ -1720,7 +1719,7 @@ async function checkDjangoServer() {
         await response.json();
         return true;
     } catch (error) {
-        console.error('Django server check failed:', error);
+        console.error('Server check failed:', error);
         return false;
     }
 }
@@ -1764,21 +1763,21 @@ async function checkMinIOServer() {
 
 // Initialize and check servers
 async function initializeApplication() {
-    // Check Django server
-    currentDjangoStatus = 'checking';
-    djangoCheckStatus.textContent = t('loading.checking');
-    djangoCheckStatus.className = 'check-status checking';
+    // Check Server
+    currentServerStatus = 'checking';
+    flaskCheckStatus.textContent = t('loading.checking');
+    flaskCheckStatus.className = 'check-status checking';
     
-    djangoOnline = await checkDjangoServer();
+    flaskOnline = await checkServerServer();
     
-    if (djangoOnline) {
-        currentDjangoStatus = 'online';
-        djangoCheckStatus.textContent = t('loading.online');
-        djangoCheckStatus.className = 'check-status online';
+    if (flaskOnline) {
+        currentServerStatus = 'online';
+        flaskCheckStatus.textContent = t('loading.online');
+        flaskCheckStatus.className = 'check-status online';
     } else {
-        currentDjangoStatus = 'offline';
-        djangoCheckStatus.textContent = t('loading.offline');
-        djangoCheckStatus.className = 'check-status offline';
+        currentServerStatus = 'offline';
+        flaskCheckStatus.textContent = t('loading.offline');
+        flaskCheckStatus.className = 'check-status offline';
     }
     
     // Check MinIO server
@@ -1799,7 +1798,7 @@ async function initializeApplication() {
     }
     
     // If both servers are online, proceed normally
-    if (djangoOnline && minioOnline) {
+    if (flaskOnline && minioOnline) {
         offlineMode = false;
         updateServerStatus('Connected');
         hideLoadingScreen();
