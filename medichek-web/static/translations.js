@@ -4,8 +4,8 @@ const translations = {
         // Loading Screen
         'loading.title': 'Initializing Medichek',
         'loading.message': 'Checking server connections...',
-        'loading.django': 'Django Server:',
-        'loading.minio': 'MinIO Server:',
+        'loading.server': 'Backend:',
+        'loading.minio': 'MinIO:',
         'loading.checking': 'Checking...',
         'loading.online': 'Online',
         'loading.offline': 'Offline',
@@ -139,8 +139,8 @@ const translations = {
         // Loading Screen
         'loading.title': '正在初始化 Medichek',
         'loading.message': '正在检查服务器连接...',
-        'loading.django': 'Django 服务器：',
-        'loading.minio': 'MinIO 服务器：',
+        'loading.server': '服务器：',
+        'loading.minio': 'MinIO：',
         'loading.checking': '检查中...',
         'loading.online': '在线',
         'loading.offline': '离线',
