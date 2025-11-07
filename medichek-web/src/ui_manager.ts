@@ -95,7 +95,7 @@ export function showWarningToast(message: string, duration = 3000) {
     }, duration);
 }
 
-export function hideWarningToast(toastTimeout: number | null) {
+export function hideWarningToast() {
     if (toastTimeout) {
         clearTimeout(toastTimeout);
     }

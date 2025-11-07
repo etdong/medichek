@@ -4,7 +4,9 @@ import * as cam from './camera.js';
 import * as server from './server_manager.js';
 import * as ui from './ui_manager.js';
 import * as ocr from './ocr_handler.js';
+import * as mp from './mediapipe_handler.js';
 
+import { FaceMesh } from '@mediapipe/face_mesh';
 import { MedichekConfig } from './config';
 import { t, updateLanguage } from './translations';
 
@@ -55,7 +57,6 @@ let facePosition = { x: 0, y: 0 };
 // MediaPipe Hands
 let handsDetection = null;
 let palmUp = false;
-let handLandmarks: any[] = [];  // Array to store multiple detected hands
 
 // Step 2: Palm detection tracking
 let palmDetectionState = {
@@ -67,7 +68,6 @@ let palmDetectionState = {
 
 // MediaPipe Face Mesh (for Step 3)
 let faceMesh = null;
-let faceMeshLandmarks = null;
 
 // Step 3: Face rubbing tracking
 let faceRubbingState = {
@@ -104,8 +104,7 @@ let autoOcrInterval: NodeJS.Timeout | null = null;
 
 const PALM_DETECTION_REQUIRED = 2000; // 2 seconds in milliseconds
 const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
-const RUBBING_MOTION_THRESHOLD = 0.005; // Minimum movement to count as rubbing (lowered for better sensitivity)
-const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landmark as "covered" (stricter detection)
+
 
 
 
@@ -819,7 +818,9 @@ function initializeFaceMesh() {
         minTrackingConfidence: 0.5
     });
     
-    faceMesh.onResults(onFaceMeshResults);
+    faceMesh.onResults(mp.onFaceMeshResults);
     
     utils.addLog('✅ Face mesh initialized', 'success');
 }
+
+

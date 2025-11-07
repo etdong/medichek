@@ -1,50 +1,58 @@
+import * as ui from './ui_manager.js';
+import * as DOM from './dom.js';
+
+import { t } from './translations.js';
+
 // Canvas context
 let canvasCtx: CanvasRenderingContext2D | null = null;
 
+let faceMeshLandmarks: any = null;
+let handLandmarks: any[] = [];  // Array to store multiple detected hands
+
+const RUBBING_MOTION_THRESHOLD = 0.005; // Minimum movement to count as rubbing (lowered for better sensitivity)
+const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landmark as "covered" (stricter detection)
+
 // Face Mesh results callback
-function onFaceMeshResults(results) {
-    // Only process for Step 3 (Face Rubbing)
-    if (analysisSession.currentStep === 3) {
-        // Initialize canvas context if needed
-        if (!canvasCtx) {
-            DOM.canvas.width = DOM.webcam.videoWidth;
-            DOM.canvas.height = DOM.webcam.videoHeight;
-            canvasCtx = DOM.canvas.getContext('2d');
-        } else {
-            // Always draw video frame to keep preview updating
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
-            canvasCtx.drawImage(results.image, 0, 0, DOM.canvas.width, DOM.canvas.height);
-        }
-        
-        // Process face landmarks if detected
-        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-            faceMeshLandmarks = results.multiFaceLandmarks[0];
-            
-            // Check if face is within canvas bounds
-            checkFaceInBounds(faceMeshLandmarks);
-            
-            // Check face rubbing with all detected hands
-            if (handLandmarks && handLandmarks.length > 0) {
-                checkFaceRubbing(faceMeshLandmarks, handLandmarks);
-            }
-            
-            // Draw overlay on canvas
-            drawFaceMeshOverlay(faceMeshLandmarks, handLandmarks);
-        } else {
-            // No face detected - still draw hand landmarks if available
-            faceMeshLandmarks = null;
-            if (handLandmarks && handLandmarks.length > 0) {
-                drawFaceMeshOverlay(null, handLandmarks);
-            }
-        }
-        
-        canvasCtx!.restore();
+export function onFaceMeshResults(results: any) {
+    // Initialize canvas context if needed
+    if (!canvasCtx) {
+        DOM.canvas.width = DOM.webcam.videoWidth;
+        DOM.canvas.height = DOM.webcam.videoHeight;
+        canvasCtx = DOM.canvas.getContext('2d');
+    } else {
+        // Always draw video frame to keep preview updating
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
+        canvasCtx.drawImage(results.image, 0, 0, DOM.canvas.width, DOM.canvas.height);
     }
+    
+    // Process face landmarks if detected
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        faceMeshLandmarks = results.multiFaceLandmarks[0];
+        
+        // Check if face is within canvas bounds
+        checkFaceInBounds(faceMeshLandmarks);
+        
+        // Check face rubbing with all detected hands
+        if (handLandmarks && handLandmarks.length > 0) {
+            checkFaceRubbing();
+        }
+        
+        // Draw overlay on canvas
+        drawFaceMeshOverlay(faceMeshLandmarks, handLandmarks);
+    } else {
+        // No face detected - still draw hand landmarks if available
+        faceMeshLandmarks = null;
+        if (handLandmarks && handLandmarks.length > 0) {
+            drawFaceMeshOverlay(null, handLandmarks);
+        }
+    }
+    
+    canvasCtx!.restore();
 }
 
 // Check if face is within canvas bounds (for Step 3)
-function checkFaceInBounds(faceLandmarks) {
+export function checkFaceInBounds(faceLandmarks: any) {
     // Get face bounding box from landmarks
     let minX = 1, minY = 1, maxX = 0, maxY = 0;
     
@@ -67,10 +75,10 @@ function checkFaceInBounds(faceLandmarks) {
     
     if (tooCloseToLeft || tooCloseToRight || tooCloseToTop || tooCloseToBottom) {
         // Show warning toast
-        showWarningToast(t('warning.centerFace'));
+        ui.showWarningToast(t('warning.centerFace'));
     } else {
         // Face is properly centered, hide warning
-        hideWarningToast();
+        ui.hideWarningToast();
     }
 }
 
@@ -259,13 +267,11 @@ function checkFaceRubbing(faceLandmarks, allHandLandmarks) {
     }
     
     // Update UI
-    if (analysisSession.currentStep === 3) {
-        updateSessionUI();
-    }
+    updateFaceRubbingUI();
 }
 
 // Track rubbing motion for a face area
-function trackRubbingMotion(area, handPos, currentTime) {
+export function trackRubbingMotion(area, handPos, currentTime) {
     const state = faceRubbingState[area];
     
     // Check if hand is moving (rubbing motion)
@@ -304,7 +310,7 @@ function trackRubbingMotion(area, handPos, currentTime) {
 }
 
 // Reset rubbing timer when hand moves away
-function resetRubbingTimer(area, currentTime) {
+export function resetRubbingTimer(area, currentTime) {
     const state = faceRubbingState[area];
     // Only reset lastUpdateTime to pause timer, keep totalTime accumulated
     state.lastUpdateTime = null;
@@ -312,7 +318,7 @@ function resetRubbingTimer(area, currentTime) {
 }
 
 // Hands detection results callback
-function onHandsDetectionResults(results) {
+export function onHandsDetectionResults(results) {
     // For Step 2 (Palm Detection), always draw the canvas to keep preview updating
     if (analysisSession.currentStep === 2) {
         // Initialize canvas context if needed
@@ -504,7 +510,7 @@ function onHandsDetectionResults(results) {
 }
 
 // Draw face mesh landmarks and rubbing zones on canvas (Step 5)
-function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
+export function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
     if (!canvasCtx || !faceLandmarks) return;
     
     // Get key facial landmarks for positioning
@@ -612,7 +618,7 @@ function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
 }
 
 // Face detection results callback
-function onFaceDetectionResults(results) {
+export function onFaceDetectionResults(results) {
     // Skip drawing on Step 3 (face rubbing - face mesh handles it)
     if (analysisSession.currentStep === 3) {
         return;
