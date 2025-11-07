@@ -1,0 +1,825 @@
+import * as DOM from './dom';
+import * as utils from './utils.js';
+import * as cam from './camera.js';
+import * as server from './server_manager.js';
+import * as ui from './ui_manager.js';
+import * as ocr from './ocr_handler.js';
+
+import { MedichekConfig } from './config';
+import { t, updateLanguage } from './translations';
+
+//#region Declarations
+
+// Configuration - use external config if available, otherwise fallback
+const SERVER_URL = (MedichekConfig && MedichekConfig.getServerUrl()) 
+    || 'http://127.0.0.1:8000';
+
+// Current server status (for re-translation when language changes)
+let currentServerStatus = 'checking'; // 'checking', 'online', or 'offline'
+let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'
+
+// Current frame capture statuses (for re-translation when language changes)
+let currentOcrStatus = 'null'; // 'analyzing', 'recognized', 'notFound', 'error', 'review', or null
+let currentPalmStatus = 'null'; // 'captured' or null
+
+// Global state - Client-side only, no server sessions
+let analysisSession = {
+    sessionId: '',
+    startTime: Date.now(),
+    currentStep: 0,
+    totalSteps: 3,  // Only tracking OCR, Palm Detection, and Face Rubbing
+    isActive: false,
+	metadata: {
+		userAgent: navigator.userAgent,
+		screenResolution: `${screen.width}x${screen.height}`,
+		source: 'web-client',
+	},
+    stepTimings: {
+        step1: { startTime: 0, endTime: 0, duration: 0 },  // OCR Capture (was step3)
+        step2: { startTime: 0, endTime: 0, duration: 0 },  // Palm Detection (was step4)
+        step3: { startTime: 0, endTime: 0, duration: 0 }   // Face Rubbing (was step5)
+    }
+};
+
+let cameraEnabled = false;
+
+// MinIO uploaded file URLs (populated after upload)
+let minioFileUrls: Record<string, string> = {};
+
+// MediaPipe Face Detection
+let faceDetection = null;
+let faceDetected = false;
+let faceCentered = false;
+let facePosition = { x: 0, y: 0 };
+
+// MediaPipe Hands
+let handsDetection = null;
+let palmUp = false;
+let handLandmarks: any[] = [];  // Array to store multiple detected hands
+
+// Step 2: Palm detection tracking
+let palmDetectionState = {
+    detected: false,
+    startTime: null,
+    totalTime: 0,
+    completed: false
+};
+
+// MediaPipe Face Mesh (for Step 3)
+let faceMesh = null;
+let faceMeshLandmarks = null;
+
+// Step 3: Face rubbing tracking
+let faceRubbingState = {
+    forehead: { 
+        rubbed: false, 
+        startTime: null, 
+        totalTime: 0, 
+        lastHandPos: null, 
+        lastUpdateTime: null
+    },
+    leftSide: { 
+        rubbed: false, 
+        startTime: null, 
+        totalTime: 0, 
+        lastHandPos: null, 
+        lastUpdateTime: null
+    },
+    rightSide: { 
+        rubbed: false, 
+        startTime: null, 
+        totalTime: 0, 
+        lastHandPos: null, 
+        lastUpdateTime: null
+    },
+    // Holistic coverage tracking
+    coveredLandmarks: new Set(), // Track all covered landmarks across entire face
+    totalCoverage: 0, // Overall percentage of face covered (0-100)
+    coverageRequired: 80 // Target coverage percentage (informational only)
+};
+
+
+// Automatic OCR scanning
+let autoOcrInterval: NodeJS.Timeout | null = null;
+
+const PALM_DETECTION_REQUIRED = 2000; // 2 seconds in milliseconds
+const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
+const RUBBING_MOTION_THRESHOLD = 0.005; // Minimum movement to count as rubbing (lowered for better sensitivity)
+const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landmark as "covered" (stricter detection)
+
+
+
+//#endregion
+
+export function updateSessionUI() {
+    DOM.sessionIdElement.textContent = analysisSession.sessionId || t('status.sessionNone');
+    DOM.currentStepElement.textContent = `${analysisSession.currentStep}/${analysisSession.totalSteps}`;
+    
+    // Hide all buttons first
+    DOM.startTrackingBtn.style.display = 'none';
+    DOM.nextStepBtn.style.display = 'none';
+    DOM.captureFrameBtn.style.display = 'none';
+    DOM.finishSessionBtn.style.display = 'none';
+    
+    // Update step instruction overlay
+    const stepInstruction = document.getElementById('step-instruction');
+    const stepProgress = document.getElementById('step-progress');
+    
+    if (!analysisSession.isActive) {
+        // Not started yet
+        DOM.startTrackingBtn.style.display = 'block';
+        DOM.startTrackingBtn.disabled = false;
+        if (stepInstruction) stepInstruction.textContent = t('steps.readyToBegin');
+        if (stepProgress) stepProgress.textContent = '';
+    } else if (analysisSession.currentStep === 0) {
+        // Step 0: Preliminaries (camera + face centering)
+        DOM.nextStepBtn.style.display = 'block';
+        DOM.nextStepBtn.disabled = !cameraEnabled || !faceCentered;
+        if (stepInstruction) stepInstruction.textContent = t('steps.preliminaries.title');
+        if (stepProgress) {
+            if (!cameraEnabled) {
+                stepProgress.textContent = t('steps.preliminaries.activatingCamera');
+            } else if (!faceCentered) {
+                stepProgress.textContent = t('steps.preliminaries.positionFace');
+            } else {
+                stepProgress.textContent = t('steps.preliminaries.ready');
+            }
+        }
+    } else if (analysisSession.currentStep === 1) {
+        // Step 1: OCR capture with auto-scanning
+        DOM.captureFrameBtn.style.display = 'block';
+        DOM.captureFrameBtn.disabled = !cameraEnabled;
+        
+        if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
+        if (stepProgress) {
+            if (ocr.ocrRecognized) {
+                stepProgress.textContent = t('steps.ocr.productRecognized');
+            } else if (ocr.ocrSkipped) {
+                stepProgress.textContent = t('steps.ocr.proceedingManual');
+            } else {
+                stepProgress.textContent = t('steps.ocr.showLabel');
+            }
+        }
+    } else if (analysisSession.currentStep === 2) {
+        // Step 2: Palm detection (auto-advance, no next button)
+        // Hide next step button - will auto-advance when palm detection completes
+        if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
+        if (stepProgress) {
+            if (palmDetectionState.completed) {
+                stepProgress.textContent = t('steps.palm.complete');
+            } else if (palmDetectionState.detected && palmDetectionState.totalTime > 0) {
+                const progress = Math.min(100, Math.round((palmDetectionState.totalTime / PALM_DETECTION_REQUIRED) * 100));
+                stepProgress.textContent = t('steps.palm.holdSteady', { progress: progress.toString() });
+            } else {
+                stepProgress.textContent = t('steps.palm.showProduct');
+            }
+        }
+    } else if (analysisSession.currentStep === 3) {
+        // Step 3: Face rubbing (time-based only, coverage is for visualization)
+        const allAreasRubbed = faceRubbingState.forehead.rubbed && 
+                               faceRubbingState.leftSide.rubbed && 
+                               faceRubbingState.rightSide.rubbed;
+        
+        DOM.finishSessionBtn.style.display = 'block';
+        DOM.finishSessionBtn.disabled = !allAreasRubbed; // Only require time-based completion
+
+        if (stepInstruction) stepInstruction.textContent = t('steps.faceRubbing.title');
+        if (stepProgress) {
+            const foreheadPercent = Math.min(100, Math.round((faceRubbingState.forehead.totalTime / RUBBING_DURATION_REQUIRED) * 100));
+            const leftPercent = Math.min(100, Math.round((faceRubbingState.leftSide.totalTime / RUBBING_DURATION_REQUIRED) * 100));
+            const rightPercent = Math.min(100, Math.round((faceRubbingState.rightSide.totalTime / RUBBING_DURATION_REQUIRED) * 100));
+            
+            // Show region progress (time-based)
+            const foreheadStatus = faceRubbingState.forehead.rubbed ? '✓' : foreheadPercent + '%';
+            const leftStatus = faceRubbingState.leftSide.rubbed ? '✓' : leftPercent + '%';
+            const rightStatus = faceRubbingState.rightSide.rubbed ? '✓' : rightPercent + '%';
+            
+            const regionProgress = t('steps.faceRubbing.progress', {
+                forehead: foreheadStatus,
+                left: leftStatus,
+                right: rightStatus
+            });
+            
+            // Show holistic coverage percentage on separate line (informational only)
+            const coverageText = `${t('steps.faceRubbing.coverage')}: ${faceRubbingState.totalCoverage}%`;
+            
+            stepProgress.innerHTML = `${regionProgress}<br>${coverageText}`;
+        }
+    }
+}
+
+// Helper function to create analysis data object (used by upload, download, and submit)
+function createAnalysisData() {
+    return {
+        session_id: analysisSession.sessionId,
+        start_time: new Date(analysisSession.startTime).toISOString(),
+        end_time: new Date().toISOString(),
+        session_duration_seconds: (Date.now() - analysisSession.startTime) / 1000,
+        total_steps: analysisSession.totalSteps,
+        completed_steps: analysisSession.currentStep,
+        ocrPassed: ocr.ocrRecognized,
+        // Step-by-step timing data (duration only)
+        step_timings: {
+            step1_ocr_capture_seconds: analysisSession.stepTimings.step1.duration,
+            step2_palm_detection_seconds: analysisSession.stepTimings.step2.duration,
+            step3_face_rubbing_seconds: analysisSession.stepTimings.step3.duration,
+            // Detailed face rubbing data for step 3
+            step3_rubbing_details: {
+                forehead_seconds: faceRubbingState.forehead.totalTime / 1000,
+                left_cheek_seconds: faceRubbingState.leftSide.totalTime / 1000,
+                right_cheek_seconds: faceRubbingState.rightSide.totalTime / 1000,
+                total_rubbing_time_seconds: (faceRubbingState.forehead.totalTime + 
+                                             faceRubbingState.leftSide.totalTime + 
+                                             faceRubbingState.rightSide.totalTime) / 1000,
+                all_areas_completed: faceRubbingState.forehead.rubbed && 
+                                   faceRubbingState.leftSide.rubbed && 
+                                   faceRubbingState.rightSide.rubbed
+            }
+        },
+        
+        // Session metadata
+        metadata: analysisSession.metadata,
+        
+        // MinIO file URLs (if available)
+        minio_urls: minioFileUrls || null,
+
+		assessment: {
+			completed: analysisSession.currentStep === analysisSession.totalSteps,
+			quality_score: 0.70 + Math.random() * 0.30,
+			issues_detected: [],
+			recommendations: []
+    	}
+    };
+}
+
+function nextStep() {
+    if (!analysisSession.isActive) {
+        utils.addLog('⚠️ No active tracking session', 'warning');
+        return;
+    }
+    
+    if (analysisSession.currentStep >= analysisSession.totalSteps) {
+        utils.addLog('⚠️ Already at final step', 'warning');
+        return;
+    }
+    
+    // Preliminary step 0 (camera + face centering) requires face to be centered
+    if (analysisSession.currentStep === 0 && !faceCentered) {
+        utils.addLog('⚠️ Please center your face in the frame first', 'warning');
+        return;
+    }
+    
+    // Step 1 (OCR) requires OCR recognition OR manual skip
+    if (analysisSession.currentStep === 1 && !ocr.ocrRecognized && !ocr.ocrSkipped) {
+        utils.addLog('⚠️ Please capture a frame with the product label showing', 'warning');
+        return;
+    }
+    
+    // Step 2 (Palm Detection) requires palm detection for 2 seconds
+    if (analysisSession.currentStep === 2 && !palmDetectionState.completed) {
+        utils.addLog('⚠️ Please show your palm to the camera with fingers pointing down for 2 seconds', 'warning');
+        return;
+    }
+    
+    // Step 3 (Face Rubbing) requires all three face areas to be rubbed
+    if (analysisSession.currentStep === 3) {
+        const allAreasRubbed = faceRubbingState.forehead.rubbed && 
+                               faceRubbingState.leftSide.rubbed && 
+                               faceRubbingState.rightSide.rubbed;
+        if (!allAreasRubbed) {
+            utils.addLog('⚠️ Please rub all three face areas (forehead, left, right) for 5 seconds each', 'warning');
+            return;
+        }
+    }
+    
+    // End timing for current step (only if we're past preliminaries)
+        const currentTime = Date.now();
+        if (analysisSession.currentStep > 0) {
+            const stepKey = `step${analysisSession.currentStep}` as keyof typeof analysisSession.stepTimings;
+            const stepTiming = analysisSession.stepTimings[stepKey];
+            if (stepTiming) {
+                stepTiming.endTime = currentTime;
+                stepTiming.duration = (currentTime - stepTiming.startTime) / 1000; // in seconds
+            }
+        }
+    
+    // Stop recording for current step (only if we're past preliminaries)
+    if (cam.recordingConsent && analysisSession.currentStep > 0) {
+        cam.stopStepRecording();
+    }
+    
+    // Log step completion
+    if (analysisSession.currentStep === 0) {
+        utils.addLog('✅ Preliminaries completed: Camera ready and face centered', 'success');
+        utils.addLog('📦 Step 1: Capture a frame showing the product label', 'info');
+    } else if (analysisSession.currentStep === 1) {
+        utils.addLog('✅ Step 1 completed: Product label recognized', 'success');
+        utils.addLog('✋ Step 2: Show your palm to the camera with fingers pointing down for 2 seconds', 'info');
+    } else if (analysisSession.currentStep === 2) {
+        utils.addLog('✅ Step 2 completed: Hand palm detected for 2 seconds', 'success');
+        utils.addLog('💆 Step 3: Rub your forehead, left cheek, and right cheek with your hand (5 seconds each)', 'info');
+    } else if (analysisSession.currentStep === 3) {
+        utils.addLog('✅ Step 3 completed: All face areas rubbed', 'success');
+        utils.addLog('🎉 All steps completed! Click Finish to review', 'success');
+    }
+    
+    analysisSession.currentStep++;
+    utils.addLog(`📍 Moving to step ${analysisSession.currentStep}/${analysisSession.totalSteps}`);
+    
+    // Start auto-scanning when entering step 1 (OCR)
+    if (analysisSession.currentStep === 1) {
+        startAutoOcrScanning();
+    } else {
+        // Stop auto-scanning if leaving step 1
+        stopAutoOcrScanning();
+    }
+    
+    // Reset step-specific states when entering a new step
+    if (analysisSession.currentStep === 2) {
+        // Reset palm detection state when entering step 2 (palm detection)
+        palmDetectionState.detected = false;
+        palmDetectionState.startTime = null;
+        palmDetectionState.totalTime = 0;
+        palmDetectionState.completed = false;
+    }
+    
+    // Start timing for next step (only if we're entering actual steps, not preliminaries)
+    if (analysisSession.currentStep > 0) {
+        const nextStepKey = `step${analysisSession.currentStep}` as keyof typeof analysisSession.stepTimings;
+        const nextStepTiming = analysisSession.stepTimings[nextStepKey];
+        if (nextStepTiming) {
+            nextStepTiming.startTime = currentTime;
+        }
+    }
+    
+    // Start recording for next step (only if we're entering actual steps)
+    if (cam.recordingConsent && analysisSession.currentStep > 0 && analysisSession.currentStep <= analysisSession.totalSteps) {
+        // Small delay to ensure clean transition
+        setTimeout(() => {
+            cam.startStepRecording(analysisSession.currentStep);
+        }, 100);
+    }
+    
+    // Record tracking data with face position
+    const stepData = {
+        timestamp: new Date().toISOString(),
+        step: analysisSession.currentStep - 1,
+        faceDetected: faceDetected,
+        faceCentered: faceCentered,
+        facePosition: { ...facePosition }
+    };
+    
+    updateSessionUI();
+    utils.updateResponse({
+        message: 'Step completed',
+        currentStep: analysisSession.currentStep,
+        stepData: stepData
+    });
+}
+
+async function submitAnalysis() {
+    if (!analysisSession.isActive) {
+        utils.addLog('⚠️ No active tracking session', 'warning');
+        return;
+    }
+    
+    // Hide review screen
+    DOM.reviewScreen.style.display = 'none';
+    
+    // Disable submit button to prevent duplicate submissions
+    DOM.submitAnalysisBtn.disabled = true;
+
+    const analysisData = createAnalysisData();
+
+    analysisData.assessment = {
+        completed: analysisSession.currentStep === analysisSession.totalSteps,
+        quality_score: 0.70 + Math.random() * 0.30,
+        issues_detected: [],
+        recommendations: []
+    };
+    
+    // If in offline mode, download instead of upload
+    if (server.offlineMode) {
+        utils.addLog('💾 Offline mode: Downloading analysis data locally...', 'info');
+        server.downloadAllRecordings(analysisData);
+        return;
+    }
+    
+    // Upload to MinIO first if consent was given, to get the file URLs
+    if (cam.recordingConsent) {
+        utils.addLog('☁️ Uploading files to MinIO first...', 'info');
+		if (!MedichekConfig.minIO.enabled) {
+			utils.addLog('⚠️ MinIO upload is disabled, downloading locally instead', 'warning');
+			server.downloadAllRecordings(analysisData);
+			ui.showCompletionScreen(false, 'Files downloaded locally', 'MinIO upload is disabled. Your files have been downloaded to your device.');
+			return;
+		}
+        try {
+            const res = await server.uploadToMinIO(analysisData);
+            if (res && server.minioFileUrls) {
+                // Include MinIO URLs for all uploaded files
+                analysisData.minio_urls = minioFileUrls;
+                utils.addLog('✅ MinIO upload completed, URLs captured', 'success');
+            }
+        } catch (error) {
+            utils.addLog('⚠️ MinIO upload failed, continuing with analysis submission', 'warning');
+        }
+    }
+    
+    utils.addLog('📤 Submitting analysis results to server...');
+    
+    try {
+        const response = await fetch(`${SERVER_URL}/api/analysis/`, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(analysisData)
+        });
+        
+        if (!response.ok) {
+            // If server returns error status, try to parse error message
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Server responded with status ${response.status}`);
+        }
+        
+        const data = await response.json();
+        utils.addLog(`✅ Analysis submitted successfully to server!`, 'success');
+        utils.updateResponse(data);
+    } catch (err: any) {
+        utils.addLog('❌ Failed to submit analysis: ' + err.message, 'error');
+        utils.addLog('💾 Analysis saved locally (can retry later)', 'info');
+        
+        // Save to localStorage as backup
+        try {
+            const savedAnalyses = JSON.parse(localStorage.getItem('medichek_analyses') || '[]');
+            savedAnalyses.push(analysisData);
+            localStorage.setItem('medichek_analyses', JSON.stringify(savedAnalyses));
+            utils.addLog('💾 Analysis saved to browser storage', 'info');
+        } catch (storageError) {
+            console.error('Failed to save to localStorage:', storageError);
+        }
+        
+        utils.updateResponse({ 
+            error: err.message,
+            localData: analysisData,
+            note: 'Analysis saved locally - you can retry submission later'
+        });
+    }
+}
+
+// Auto-scanning OCR functionality
+export function startAutoOcrScanning() {
+    if (autoOcrInterval) return; // Already running
+    
+    // Scan every 2 seconds
+    autoOcrInterval = setInterval(async () => {
+        if (analysisSession.currentStep !== 1 || ocr.ocrRecognized || ocr.ocrSkipped) {
+            stopAutoOcrScanning();
+            return;
+        }
+        
+        const res = await cam.performAutoOcrScan();
+
+        if (res) {
+            // Mark as recognized
+            ocr.setOcrRecognized(true);
+            currentOcrStatus = 'recognized';
+            DOM.ocrStatusBadge.textContent = t('frame.ocr.ocrRecognized');
+            DOM.ocrStatusBadge.className = 'ocr-status success';
+            DOM.ocrResultCompact.innerHTML = '';
+            
+            utils.addLog('✅ Product label recognized!', 'success');
+            
+            // Stop auto-scanning
+            stopAutoOcrScanning();
+            
+            // Update UI
+            updateSessionUI();
+            
+            // Auto-advance after short delay
+            setTimeout(() => {
+                nextStep();
+            }, 1500);
+        }
+    }, 1000);
+    
+    utils.addLog('🔍 Auto-scanning for product label...', 'info');
+}
+
+function stopAutoOcrScanning() {
+    if (autoOcrInterval) {
+        clearInterval(autoOcrInterval);
+        autoOcrInterval = null;
+    }
+}
+
+// Restart session from review screen
+function restartSession() {
+    // Hide review screen
+    DOM.reviewScreen.style.display = 'none';
+    
+    // Reset everything
+    location.reload();
+}
+
+//#region Event listeners
+
+addEventListener('load', () => {
+    // Initialize language
+    updateLanguage(localStorage.getItem('medichek-language') || 'en');
+    
+    // Initialize application
+    initializeApplication();
+});
+
+// Event listeners for loading screen
+DOM.continueOfflineBtn.addEventListener('click', server.continueOffline);
+DOM.retryConnectionBtn.addEventListener('click', async () => {
+    DOM.offlinePrompt.style.display = 'none';
+    await initializeApplication();
+});
+
+// Language selector event listeners
+DOM.langEnBtn.addEventListener('click', () => {
+    updateLanguage('en');
+    // Re-translate dynamic content after language change
+    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
+    ui.updateServerStatus(currentServerStatus);
+    ui.updateFrameCaptureStatuses(currentOcrStatus, currentPalmStatus);
+    updateSessionUI();
+});
+
+DOM.langZhBtn.addEventListener('click', () => {
+    updateLanguage('zh');
+    // Re-translate dynamic content after language change
+    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
+    ui.updateServerStatus(currentServerStatus);
+    ui.updateFrameCaptureStatuses(currentOcrStatus, currentPalmStatus);
+    updateSessionUI();
+});
+
+DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
+
+DOM.captureFrameBtn.addEventListener('click', async () => {
+    currentOcrStatus = 'analyzing';
+	cam.captureFrame(true);
+});
+
+DOM.nextStepBtn.addEventListener('click', nextStep);
+DOM.finishSessionBtn.addEventListener('click', () => {
+    // End timing for step 3
+    const currentTime = Date.now();
+    if (analysisSession.stepTimings.step3.startTime && !analysisSession.stepTimings.step3.endTime) {
+        analysisSession.stepTimings.step3.endTime = currentTime;
+        analysisSession.stepTimings.step3.duration = 
+            (currentTime - analysisSession.stepTimings.step3.startTime) / 1000;
+    }
+    ui.showReviewScreen();
+});
+
+DOM.submitAnalysisBtn.addEventListener('click', submitAnalysis);
+DOM.restartSessionBtn.addEventListener('click', restartSession);
+
+// Modal event handlers
+DOM.acceptRecordingBtn.addEventListener('click', async () => {
+    try {
+        // Wait for the promise to resolve so analysisSession gets the actual object
+        analysisSession = await cam.acceptRecordingConsent();
+        updateSessionUI();
+        utils.addLog(`✅ Tracking session started: ${analysisSession.sessionId}`, 'success');
+        utils.addLog('📊 All tracking is performed locally on this device', 'info');
+        utils.addLog('📹 Requesting camera access...', 'info');
+        
+        // Enable camera (preliminary step, not tracked)
+        cameraEnabled = await cam.enableCamera();
+
+		if (cameraEnabled) {
+			utils.addLog('✅ Camera access granted', 'success');
+			// Initialize MediaPipe Face Detection
+			initializeFaceDetection();
+			
+			// Initialize MediaPipe Hands Detection
+			initializeHandsDetection();
+			
+			// Initialize MediaPipe Face Mesh (for Step 3)
+			initializeFaceMesh();
+			
+			// Start camera processing with MediaPipe
+			await cam.setCameraInstance(new Camera(DOM.webcam, {
+				onFrame: async () => {
+					// Optimize by only running necessary models for current step
+					
+					// Step 0 (Preliminaries): Only need face detection
+					if (analysisSession.currentStep === 0) {
+						await faceDetection.send({image: DOM.webcam});
+					}
+					// Step 1 (OCR): Use face detection to keep camera feed updating and draw OCR overlay
+					else if (analysisSession.currentStep === 1) {
+						await faceDetection.send({image: DOM.webcam});
+					}
+					// Step 2 (Palm Detection): Only need hands detection (no face tracking needed)
+					else if (analysisSession.currentStep === 2) {
+						await handsDetection.send({image: DOM.webcam});
+					}
+					// Step 3 (Face Rubbing): Need both models - run in parallel for better FPS
+					else if (analysisSession.currentStep === 3) {
+						// Run both models in parallel instead of sequentially
+						await Promise.all([
+							faceMesh.send({image: DOM.webcam}),
+							handsDetection.send({image: DOM.webcam})
+						]);
+					}
+				},
+				width: 640,   // Reduced from 1280 for better FPS (processing resolution)
+				height: 480   // Reduced from 720 for better FPS (processing resolution)
+			}));
+
+			utils.addLog('🎥 Face tracking started', 'success');
+			utils.addLog('✋ Hand tracking started', 'success');
+			utils.addLog('✅ Step 1: Video feed established - Click "Next Step" to continue', 'success');
+
+			// Note: Recording starts when moving from preliminaries to step 1
+
+			utils.updateResponse({
+				message: 'Session started - tracking locally',
+				session: analysisSession
+			});
+		}
+
+		updateSessionUI();
+    } catch (err: any) {
+        utils.addLog('❌ Failed to start recording session: ' + (err && err.message ? err.message : err), 'error');
+    }
+});
+DOM.declineRecordingBtn.addEventListener('click', cam.declineRecordingConsent);
+
+DOM.retryOcrBtn.addEventListener('click', () => {
+    // Hide the modal
+    DOM.ocrFailModal.style.display = 'none';
+    
+    // Reset the captured frame state to allow new capture
+    cam.resetCapturedFrame();
+    ocr.setOcrRecognized(false);
+    ocr.setOcrSkipped(false);
+    
+    // Re-enable capture button for retry
+    DOM.captureFrameBtn.disabled = false;
+    
+    utils.addLog('Retry OCR - Capture a new frame', 'info');
+    
+    // Update UI to allow recapture
+    updateSessionUI();
+});
+
+DOM.continueAnywayBtn.addEventListener('click', () => {
+    // Hide the modal
+    DOM.ocrFailModal.style.display = 'none';
+
+    // Mark as manually reviewed/skipped
+    ocr.setOcrSkipped(true);
+    
+    // Update the status badge to show manual review
+    currentOcrStatus = 'review';
+    DOM.ocrStatusBadge.textContent = t('frame.ocrReview');
+    DOM.ocrStatusBadge.className = 'ocr-status warning';
+
+    utils.addLog('OCR verification skipped - proceeding with manual review', 'warning');
+    
+    // Automatically advance to the next step
+    nextStep();
+});
+
+// Start new session button
+DOM.startNewSessionBtn.addEventListener('click', () => {
+    // Reload the page to start fresh
+    location.reload();
+});
+
+// Download analysis button (after upload completion)
+DOM.downloadAnalysisBtn.addEventListener('click', async () => {
+    utils.addLog('📥 Downloading analysis data...', 'info');
+    
+    // Hide completion screen
+    DOM.completionScreen.style.display = 'none';
+    
+    // Show download overlay
+    DOM.downloadOverlay.style.display = 'flex';
+
+    // Create analysis data
+    const analysisData = createAnalysisData();
+    
+    // Call the download function
+    await server.downloadAllRecordings(analysisData);
+});
+
+//#endregion
+
+// Initialize
+async function initializeApplication() {
+	// Check Server
+	currentServerStatus = 'checking';
+	DOM.serverCheckStatus.textContent = t('loading.checking');
+	DOM.serverCheckStatus.className = 'check-status checking';
+	currentMinioStatus = 'checking';
+	DOM.minioCheckStatus.textContent = t('loading.checking');
+	DOM.minioCheckStatus.className = 'check-status checking';
+
+    const { serverOnline, minioOnline } = await server.checkServers();
+
+	if (serverOnline) {
+		currentServerStatus = 'online';
+		DOM.serverCheckStatus.textContent = t('loading.online');
+		DOM.serverCheckStatus.className = 'check-status online';
+	} else {
+		currentServerStatus = 'offline';
+		DOM.serverCheckStatus.textContent = t('loading.offline');
+		DOM.serverCheckStatus.className = 'check-status offline';
+	}
+	
+	if (minioOnline) {
+		currentMinioStatus = 'online';
+		DOM.minioCheckStatus.textContent = t('loading.online');
+		DOM.minioCheckStatus.className = 'check-status online';
+	} else {
+		currentMinioStatus = 'offline';
+		DOM.minioCheckStatus.textContent = t('loading.offline');
+		DOM.minioCheckStatus.className = 'check-status offline';
+	}
+	
+	// If both servers are online, proceed normally
+	if (serverOnline && minioOnline) {
+		ui.updateServerStatus('Connected');
+		ui.hideLoadingScreen();
+        updateSessionUI();
+	} else {
+		// Show offline prompt
+		DOM.offlinePrompt.style.display = 'flex';
+	}
+}
+
+// Initialize MediaPipe Face Detection
+function initializeFaceDetection() {
+    utils.addLog('🤖 Initializing MediaPipe Face Detection...', 'info');
+    
+    faceDetection = new FaceDetection({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+        }
+    });
+    
+    faceDetection.setOptions({
+        model: 'short',
+        minDetectionConfidence: 0.5
+    });
+    
+    faceDetection.onResults(onFaceDetectionResults);
+    
+    utils.addLog('✅ Face detection initialized', 'success');
+}
+
+// Initialize MediaPipe Hands
+function initializeHandsDetection() {
+    utils.addLog('🤖 Initializing MediaPipe Hands Detection...', 'info');
+    
+    handsDetection = new Hands({
+        locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+    });
+    
+    handsDetection.setOptions({
+        maxNumHands: 2,  // Allow detection of up to 2 hands
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    
+    handsDetection.onResults(onHandsDetectionResults);
+    
+    utils.addLog('✅ Hands detection initialized', 'success');
+}
+
+// Initialize MediaPipe Face Mesh (for Step 3)
+function initializeFaceMesh() {
+    utils.addLog('🤖 Initializing MediaPipe Face Mesh...', 'info');
+    
+    faceMesh = new FaceMesh({
+        locateFile: (file: string) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }
+    });
+    
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,  // Disable for better performance (we don't need iris/lips detail)
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    
+    faceMesh.onResults(onFaceMeshResults);
+    
+    utils.addLog('✅ Face mesh initialized', 'success');
+}

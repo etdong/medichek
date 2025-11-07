@@ -1,15 +1,5 @@
-/**
- * Translations Module
- * 
- * Contains all internationalization (i18n) functionality:
- * - English and Chinese translations
- * - Translation lookup function
- * - Language switching
- * - Persistent language preference
- */
-
-// Translation dictionary with all supported languages
-export const translations = {
+// Translations for Medichek
+const translations: Record<string, Record<string, string>> = {
     en: {
         // Loading Screen
         'loading.title': 'Initializing Medichek',
@@ -284,47 +274,24 @@ export const translations = {
     }
 };
 
-// Current language - get from localStorage or default to 'en'
-let currentLanguage = localStorage.getItem('medichek-language') || 'en';
+// Current language
+let currentLanguage: string = localStorage.getItem('medichek-language') || 'en';
 
-/**
- * Get the current language
- * @returns {string} Current language code
- */
-export function getCurrentLanguage() {
-    return currentLanguage;
-}
-
-/**
- * Set the current language
- * @param {string} lang - Language code to set
- */
-export function setCurrentLanguage(lang) {
-    currentLanguage = lang;
-}
-
-/**
- * Get translation for a key with optional placeholder replacements
- * @param {string} key - Translation key (e.g., 'loading.title')
- * @param {Object} replacements - Optional object with placeholder replacements
- * @returns {string} Translated text
- */
-export function t(key, replacements = {}) {
-    let text = translations[currentLanguage][key] || translations['en'][key] || key;
+// Get translation
+export function t(key: string, replacements: Record<string, string> = {}): string {
+    const langMap = translations[currentLanguage] || translations['en'] || {};
+    let text: string = langMap[key] ?? translations['en'][key] ?? key;
     
-    // Replace placeholders like {progress}, {forehead}, etc.
+    // Replace placeholders (global replace for each placeholder)
     Object.keys(replacements).forEach(placeholder => {
-        text = text.replace(`{${placeholder}}`, replacements[placeholder]);
+        text = text.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), String(replacements[placeholder]));
     });
     
     return text;
 }
 
-/**
- * Update all translatable elements in the DOM
- * @param {string} lang - Language code to switch to ('en' or 'zh')
- */
-export function updateLanguage(lang) {
+// Update all translatable elements
+export function updateLanguage(lang: string) {
     currentLanguage = lang;
     localStorage.setItem('medichek-language', lang);
     
@@ -334,13 +301,7 @@ export function updateLanguage(lang) {
     // Update all elements with data-i18n attribute
     document.querySelectorAll('[data-i18n]').forEach(element => {
         const key = element.getAttribute('data-i18n');
-        element.textContent = t(key);
-    });
-    
-    // Update all elements with data-i18n-placeholder attribute
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
-        const key = element.getAttribute('data-i18n-placeholder');
-        element.placeholder = t(key);
+        element.textContent = t(key!);
     });
     
     // Update language selector buttons

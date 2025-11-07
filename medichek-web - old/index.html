@@ -9,7 +9,7 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="alternate icon" href="./favicon.svg">
     
-    <link rel="stylesheet" href="./src/style.css">
+    <link rel="stylesheet" href="./static/style.css">
     
     <!-- MediaPipe Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -30,6 +30,8 @@
     
     <!-- Environment Variables (optional - copy env.example.js to env.js) -->
     <script src="./env.js" onerror="console.log('env.js not found - using defaults from config.js')"></script>
+    
+    <!-- Medichek Configuration and translations moved to ES modules under /static/js/ -->
 </head>
 <body>
     <!-- Loading Screen -->
@@ -277,6 +279,6 @@
         </div>
     </div>
 
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="./static/js/main.js"></script>
 </body>
 </html>
