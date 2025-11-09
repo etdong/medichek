@@ -5,19 +5,19 @@
 // For development, you can create a .env file (do NOT commit to git!)
 // For production, set these as actual environment variables
 const ENV = {
-    SERVER_URL: window.ENV?.SERVER_URL || 'http://127.0.0.1:8000',
-    PRODUCTION_SERVER_URL: window.ENV?.PRODUCTION_SERVER_URL || 'https://your-django-server.com',
-    MINIO_ENDPOINT: window.ENV?.MINIO_ENDPOINT || 'localhost',
-    MINIO_PORT: window.ENV?.MINIO_PORT || 9000,
-    MINIO_USE_SSL: window.ENV?.MINIO_USE_SSL === 'true' || false,
-    MINIO_ACCESS_KEY: window.ENV?.MINIO_ACCESS_KEY || 'minioadmin',
-    MINIO_SECRET_KEY: window.ENV?.MINIO_SECRET_KEY || 'minioadmin',
-    MINIO_VIDEOS_BUCKET: window.ENV?.MINIO_VIDEOS_BUCKET || 'video',
-    MINIO_IMAGES_BUCKET: window.ENV?.MINIO_IMAGES_BUCKET || 'product',
-    MINIO_REGION: window.ENV?.MINIO_REGION || 'us-east-1'
+    SERVER_URL: import.meta.env.SERVER_URL || 'http://127.0.0.1:8000',
+    PRODUCTION_SERVER_URL: import.meta.env.PRODUCTION_SERVER_URL || 'https://your-django-server.com',
+    MINIO_ENDPOINT: import.meta.env.MINIO_ENDPOINT || 'localhost',
+    MINIO_PORT: import.meta.env.MINIO_PORT || 9000,
+    MINIO_USE_SSL: import.meta.env.MINIO_USE_SSL === 'true' || false,
+    MINIO_ACCESS_KEY: import.meta.env.MINIO_ACCESS_KEY || 'minioadmin',
+    MINIO_SECRET_KEY: import.meta.env.MINIO_SECRET_KEY || 'minioadmin',
+    MINIO_VIDEOS_BUCKET: import.meta.env.MINIO_VIDEOS_BUCKET || 'video',
+    MINIO_IMAGES_BUCKET: import.meta.env.MINIO_IMAGES_BUCKET || 'product',
+    MINIO_REGION: import.meta.env.MINIO_REGION || 'us-east-1'
 };
 
-const MedichekConfig = {
+export const MedichekConfig = {
     // Backend Server URL
     serverUrl: ENV.SERVER_URL,
     
@@ -56,7 +56,7 @@ const MedichekConfig = {
         region: ENV.MINIO_REGION,
         
         // Generate object key for a file
-        getObjectKey: function(sessionId, filename) {
+        getObjectKey: function(sessionId: string, filename: string): string {
             // Get current date in YYYYMMDD format
             const now = new Date();
             const year = now.getFullYear();
@@ -68,8 +68,3 @@ const MedichekConfig = {
         }
     }
 };
-
-// Export for use in script.js
-if (typeof window !== 'undefined') {
-    window.MedichekConfig = MedichekConfig;
-}

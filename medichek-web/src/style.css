@@ -226,7 +226,7 @@ body {
     color: #ffaa00;
 }
 
-#step3-frame-canvas, #step4-frame-canvas {
+#step1-frame-canvas, #step2-frame-canvas {
     width: 100%;
     height: auto;
     max-height: 90px; /* Reduced to fit in fixed height */
@@ -753,7 +753,7 @@ body {
         max-height: 95px; /* Increased from 80px */
     }
     
-    #step3-frame-canvas, #step4-frame-canvas {
+    #step1-frame-canvas, #step2-frame-canvas {
         max-height: 95px; /* Increased from 80px */
     }
     
@@ -849,7 +849,7 @@ body {
         max-height: 85px; /* Increased from 70px */
     }
     
-    #step3-frame-canvas, #step4-frame-canvas {
+    #step1-frame-canvas, #step2-frame-canvas {
         max-height: 85px; /* Increased from 70px */
     }
     

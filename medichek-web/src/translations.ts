@@ -1,5 +1,5 @@
 // Translations for Medichek
-const translations = {
+const translations: Record<string, Record<string, string>> = {
     en: {
         // Loading Screen
         'loading.title': 'Initializing Medichek',
@@ -57,6 +57,7 @@ const translations = {
         'steps.palm.showProduct': 'Show the product clearly on hand/palm/fingers',
         'steps.faceRubbing.title': 'Step 3: Rub Face Areas',
         'steps.faceRubbing.progress': 'Forehead: {forehead} | Left: {left} | Right: {right}',
+        'steps.faceRubbing.coverage': 'Face Coverage',
         
         // Session status
         'status.sessionNone': 'None',
@@ -192,6 +193,7 @@ const translations = {
         'steps.palm.showProduct': '在手/手掌/手指上清晰展示产品',
         'steps.faceRubbing.title': '步骤 3：揉搓面部区域',
         'steps.faceRubbing.progress': '额头：{forehead} | 左侧：{left} | 右侧：{right}',
+        'steps.faceRubbing.coverage': '面部覆盖率',
         
         // Session status
         'status.sessionNone': '无',
@@ -273,22 +275,23 @@ const translations = {
 };
 
 // Current language
-let currentLanguage = localStorage.getItem('medichek-language') || 'en';
+let currentLanguage: string = localStorage.getItem('medichek-language') || 'en';
 
 // Get translation
-function t(key, replacements = {}) {
-    let text = translations[currentLanguage][key] || translations['en'][key] || key;
+export function t(key: string, replacements: Record<string, string> = {}): string {
+    const langMap = translations[currentLanguage] || translations['en'] || {};
+    let text: string = langMap[key] ?? translations['en'][key] ?? key;
     
-    // Replace placeholders
+    // Replace placeholders (global replace for each placeholder)
     Object.keys(replacements).forEach(placeholder => {
-        text = text.replace(`{${placeholder}}`, replacements[placeholder]);
+        text = text.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), String(replacements[placeholder]));
     });
     
     return text;
 }
 
 // Update all translatable elements
-function updateLanguage(lang) {
+export function updateLanguage(lang: string) {
     currentLanguage = lang;
     localStorage.setItem('medichek-language', lang);
     
@@ -298,13 +301,7 @@ function updateLanguage(lang) {
     // Update all elements with data-i18n attribute
     document.querySelectorAll('[data-i18n]').forEach(element => {
         const key = element.getAttribute('data-i18n');
-        element.textContent = t(key);
-    });
-    
-    // Update all elements with data-i18n-placeholder attribute
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
-        const key = element.getAttribute('data-i18n-placeholder');
-        element.placeholder = t(key);
+        element.textContent = t(key!);
     });
     
     // Update language selector buttons

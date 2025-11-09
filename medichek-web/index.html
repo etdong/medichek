@@ -9,7 +9,17 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="alternate icon" href="./favicon.svg">
     
-    <link rel="stylesheet" href="./static/style.css">
+    <link rel="stylesheet" href="./src/style.css">
+
+    <script>
+        var global = global || window;
+        window.global ||= window;
+        globalThis.global ||= window;
+        var Buffer = Buffer || {}; // Basic polyfill for Buffer
+        var process = process || { env: { DEBUG: undefined }, version: '' }; // Basic polyfill for process
+    </script>
+
+    <script type="module" src="./src/main.js"></script>
     
     <!-- MediaPipe Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -27,15 +37,6 @@
     
     <!-- AWS SDK for S3 (MinIO compatible) -->
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1.24.min.js"></script>
-    
-    <!-- Environment Variables (optional - copy env.example.js to env.js) -->
-    <script src="./env.js" onerror="console.log('env.js not found - using defaults from config.js')"></script>
-    
-    <!-- Medichek Configuration -->
-    <script src="./static/config.js"></script>
-    
-    <!-- Translations -->
-    <script src="./static/translations.js"></script>
 </head>
 <body>
     <!-- Loading Screen -->
@@ -94,22 +95,22 @@
             <div class="captured-frame-content">
                 <div class="captured-frames-grid">
                     <!-- Step 3: Product Label Capture -->
-                    <div class="frame-slot" id="step3-frame-slot">
+                    <div class="frame-slot" id="step1-frame-slot">
                         <div class="frame-header">
                             <span class="frame-label" data-i18n="frame.step1">Step 1</span>
                             <span id="ocr-status" class="ocr-status"></span>
                         </div>
-                        <canvas id="step3-frame-canvas" class="frame-canvas"></canvas>
+                        <canvas id="step1-frame-canvas" class="frame-canvas"></canvas>
                         <div id="ocr-result-compact" class="ocr-result-compact"></div>
                     </div>
                     
                     <!-- Step 4: Palm Detection Capture -->
-                    <div class="frame-slot" id="step4-frame-slot">
+                    <div class="frame-slot" id="step2-frame-slot">
                         <div class="frame-header">
                             <span class="frame-label" data-i18n="frame.step2">Step 2</span>
                             <span id="palm-status" class="palm-status"></span>
                         </div>
-                        <canvas id="step4-frame-canvas" class="frame-canvas"></canvas>
+                        <canvas id="step2-frame-canvas" class="frame-canvas"></canvas>
                     </div>
                 </div>
             </div>
@@ -282,7 +283,5 @@
             </div>
         </div>
     </div>
-
-    <script src="./static/script.js"></script>
 </body>
 </html>
