@@ -98,14 +98,14 @@ export function updateSessionUI() {
         DOM.captureFrameBtn.style.display = 'block';
         DOM.captureFrameBtn.disabled = !cameraEnabled;
         
-        if (stepInstruction) stepInstruction.textContent = t('steps.title');
+        if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
         if (stepProgress) {
             if (ocrRecognized) {
-                stepProgress.textContent = t('steps.productRecognized');
+                stepProgress.textContent = t('steps.ocr.productRecognized');
             } else if (ocrSkipped) {
-                stepProgress.textContent = t('steps.proceedingManual');
+                stepProgress.textContent = t('steps.ocr.proceedingManual');
             } else {
-                stepProgress.textContent = t('steps.showLabel');
+                stepProgress.textContent = t('steps.ocr.showLabel');
             }
         }
     } else if (analysisSession.currentStep === 2) {
@@ -591,7 +591,7 @@ DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     currentOcrStatus = 'analyzing';
-    performOCR(cam.captureFrame(1));
+    performOCR(await cam.captureFrame(1));
 });
 
 DOM.nextStepBtn.addEventListener('click', nextStep);
@@ -746,31 +746,31 @@ DOM.downloadAnalysisBtn.addEventListener('click', async () => {
 // Initialize
 async function initializeApplication() {
 	// Check Server
-	currentServerStatus = 'checking';
+	currentServerStatus = 'Checking...';
 	DOM.serverCheckStatus.textContent = t('loading.checking');
 	DOM.serverCheckStatus.className = 'check-status checking';
-	currentMinioStatus = 'checking';
+	currentMinioStatus = 'Checking...';
 	DOM.minioCheckStatus.textContent = t('loading.checking');
 	DOM.minioCheckStatus.className = 'check-status checking';
 
     const { serverOnline, minioOnline } = await server.checkServers();
 
 	if (serverOnline) {
-		currentServerStatus = 'online';
+		currentServerStatus = 'Connected';
 		DOM.serverCheckStatus.textContent = t('loading.online');
 		DOM.serverCheckStatus.className = 'check-status online';
 	} else {
-		currentServerStatus = 'offline';
+		currentServerStatus = 'Disconnected';
 		DOM.serverCheckStatus.textContent = t('loading.offline');
 		DOM.serverCheckStatus.className = 'check-status offline';
 	}
 	
 	if (minioOnline) {
-		currentMinioStatus = 'online';
+		currentMinioStatus = 'Connected';
 		DOM.minioCheckStatus.textContent = t('loading.online');
 		DOM.minioCheckStatus.className = 'check-status online';
 	} else {
-		currentMinioStatus = 'offline';
+		currentMinioStatus = 'Disconnected';
 		DOM.minioCheckStatus.textContent = t('loading.offline');
 		DOM.minioCheckStatus.className = 'check-status offline';
 	}
