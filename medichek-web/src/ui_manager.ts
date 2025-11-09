@@ -3,7 +3,6 @@ import * as DOM from './dom.js';
 import * as utils from './utils.js';
 import * as cam from './camera.js';
 import * as server from './server_manager.js';
-import * as ocr from './ocr_handler.js';
 
 let toastTimeout: NodeJS.Timeout | null = null;
 let handBoundsWarningTimeout: NodeJS.Timeout | null = null;
@@ -20,8 +19,6 @@ export function updateServerStatus(newStatus: string) {
     DOM.serverStatus.className = 'status-badge ' + 
         (newStatus === 'Connected' ? 'connected' : 
         newStatus === 'Checking...' ? 'checking' : 'disconnected');
-    
-    return newStatus;
 }
 
 // Update loading screen status checks with current language
@@ -121,7 +118,7 @@ export function showHandBoundsWarning() {
     }, 2000);
 }
 
-export function hideHandBoundsWarning(handBoundsWarningTimeout: number | null) {
+export function hideHandBoundsWarning() {
     if (handBoundsWarningTimeout) {
         clearTimeout(handBoundsWarningTimeout);
         handBoundsWarningTimeout = null;
@@ -156,7 +153,7 @@ export function showReviewScreen() {
     }
     
     // Update review screen status
-    DOM.reviewOcrStatus.textContent = ocr.ocrRecognized ? t('review.recognized') : t('review.manualReview');
+    DOM.reviewOcrStatus.textContent = t('review.completed');
     DOM.reviewPalmStatus.textContent = t('review.completed');
     DOM.reviewFaceStatus.textContent = t('review.completed');
     

@@ -6,8 +6,6 @@ import { t } from './translations.js';
 import JSZip from 'jszip';
 import { MedichekConfig } from './config.js';
 import * as AWS from 'aws-sdk';
-import { fsync } from 'fs';
-import { off } from 'process';
 
 // Storage for MinIO file URLs (organized by step/file)
 type MinioFileEntry = {
@@ -46,23 +44,26 @@ async function checkServer(): Promise<boolean> {
     ui.updateServerStatus('Checking...');
     
     try {
-        const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
+        return new Promise(async (resolve) => {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
             method: 'GET',
             mode: 'cors',
             headers: {
                 'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server responded with status ${response.status}`);
             }
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Server responded with status ${response.status}`);
-        }
-        
-        const data = await response.json();
-        ui.updateServerStatus('Connected');
-        utils.addLog('✅ Server is online', 'success');
-        utils.updateResponse(data);
-        return true;
+            
+            const data = await response.json();
+            ui.updateServerStatus('Connected');
+            utils.addLog('✅ Server is online', 'success');
+            utils.updateResponse(data);
+            resolve(true);
+    });
+
     } catch (err: any) {
         ui.updateServerStatus('Disconnected');
         utils.addLog('⚠️ Server offline (can still track locally)', 'warning');
@@ -93,10 +94,10 @@ async function checkMinIOServer(): Promise<boolean> {
         
         // Try to list buckets to test connection
         // Use callback-based approach instead of promise
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             s3.listBuckets((err: any) => {
                 if (err) {
-                    reject(err);
+                    resolve(false);
                 } else {
                     resolve(true);
                 }
@@ -104,7 +105,7 @@ async function checkMinIOServer(): Promise<boolean> {
         });
     } catch (error) {
         console.error('MinIO server check failed:', error);
-        return false;
+        return false
     }
 }
 

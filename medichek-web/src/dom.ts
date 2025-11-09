@@ -34,12 +34,12 @@ export const recordingConsentModal: HTMLElement = document.getElementById('recor
 export const acceptRecordingBtn: HTMLButtonElement = document.getElementById('accept-recording-btn') as HTMLButtonElement;
 export const declineRecordingBtn: HTMLButtonElement = document.getElementById('decline-recording-btn') as HTMLButtonElement;
 
-// Captured frame elements (split display for step 3 and step 4)
+// Captured frame elements (split display for step 1 and step 2)
 export const capturedFrameArea: HTMLElement = document.getElementById('captured-frame-area') as HTMLElement;
-export const step1FrameCanvas: HTMLCanvasElement = document.getElementById('step3-frame-canvas') as HTMLCanvasElement;
-export const step4FrameCanvas: HTMLCanvasElement = document.getElementById('step4-frame-canvas') as HTMLCanvasElement;
-export const step3FrameSlot: HTMLElement = document.getElementById('step3-frame-slot') as HTMLElement;
-export const step4FrameSlot: HTMLElement = document.getElementById('step4-frame-slot') as HTMLElement;
+export const step1FrameCanvas: HTMLCanvasElement = document.getElementById('step1-frame-canvas') as HTMLCanvasElement;
+export const step2FrameCanvas: HTMLCanvasElement = document.getElementById('step2-frame-canvas') as HTMLCanvasElement;
+export const step1FrameSlot: HTMLElement = document.getElementById('step1-frame-slot') as HTMLElement;
+export const step2FrameSlot: HTMLElement = document.getElementById('step2-frame-slot') as HTMLElement;
 export const ocrResultCompact: HTMLElement = document.getElementById('ocr-result-compact') as HTMLElement;
 export const ocrStatusBadge: HTMLElement = document.getElementById('ocr-status') as HTMLElement;
 export const palmStatusBadge: HTMLElement = document.getElementById('palm-status') as HTMLElement;

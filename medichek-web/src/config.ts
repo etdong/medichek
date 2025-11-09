@@ -5,7 +5,7 @@
 // For development, you can create a .env file (do NOT commit to git!)
 // For production, set these as actual environment variables
 const ENV = {
-    SERVER_URL: import.meta.env.SERVER_URL || 'http://127.0.0.1:9000',
+    SERVER_URL: import.meta.env.SERVER_URL || 'http://127.0.0.1:8000',
     PRODUCTION_SERVER_URL: import.meta.env.PRODUCTION_SERVER_URL || 'https://your-django-server.com',
     MINIO_ENDPOINT: import.meta.env.MINIO_ENDPOINT || 'localhost',
     MINIO_PORT: import.meta.env.MINIO_PORT || 9000,

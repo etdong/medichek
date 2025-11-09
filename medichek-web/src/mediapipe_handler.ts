@@ -1,7 +1,11 @@
 import * as ui from './ui_manager.js';
 import * as DOM from './dom.js';
+import * as utils from './utils.js';
+import * as cam from './camera.js';
 
 import { t } from './translations.js';
+import { canvas } from './dom.js';
+import { addLog } from './utils.js';
 
 // Canvas context
 let canvasCtx: CanvasRenderingContext2D | null = null;
@@ -9,8 +13,72 @@ let canvasCtx: CanvasRenderingContext2D | null = null;
 let faceMeshLandmarks: any = null;
 let handLandmarks: any[] = [];  // Array to store multiple detected hands
 
+let palmUp = false;
+
+// MediaPipe Face Detection
+export let faceCentered = false;
+export let facePosition = { x: 0, y: 0 };
+
+// Step 2: Palm detection tracking
+export let palmDetectionState = {
+    detected: false,
+    startTime: 0,
+    totalTime: 0,
+    completed: false
+};
+
+// Step 3: Face rubbing tracking
+export type FaceArea = 'forehead' | 'leftSide' | 'rightSide';
+
+type AreaState = {
+    rubbed: boolean;
+    startTime: number | null;
+    totalTime: number;
+    lastHandPos: { x: number; y: number } | null;
+    lastUpdateTime: number | null;
+};
+
+export let faceRubbingState: {
+    forehead: AreaState;
+    leftSide: AreaState;
+    rightSide: AreaState;
+    // Holistic coverage tracking
+    coveredLandmarks: Set<number>; // Track all covered landmarks across entire face
+    totalCoverage: number; // Overall percentage of face covered (0-100)
+    coverageRequired: number; // Target coverage percentage (informational only)
+} = {
+    forehead: {
+        rubbed: false,
+        startTime: null,
+        totalTime: 0,
+        lastHandPos: null,
+        lastUpdateTime: null
+    },
+    leftSide: {
+        rubbed: false,
+        startTime: null,
+        totalTime: 0,
+        lastHandPos: null,
+        lastUpdateTime: null
+    },
+    rightSide: {
+        rubbed: false,
+        startTime: null,
+        totalTime: 0,
+        lastHandPos: null,
+        lastUpdateTime: null
+    },
+    // Holistic coverage tracking
+    coveredLandmarks: new Set(), // Track all covered landmarks across entire face
+    totalCoverage: 0, // Overall percentage of face covered (0-100)
+    coverageRequired: 80 // Target coverage percentage (informational only)
+};
+
 const RUBBING_MOTION_THRESHOLD = 0.005; // Minimum movement to count as rubbing (lowered for better sensitivity)
 const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landmark as "covered" (stricter detection)
+export const PALM_DETECTION_REQUIRED = 2000; // 2 seconds in milliseconds
+export const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
+
 
 // Face Mesh results callback
 export function onFaceMeshResults(results: any) {
@@ -35,16 +103,16 @@ export function onFaceMeshResults(results: any) {
         
         // Check face rubbing with all detected hands
         if (handLandmarks && handLandmarks.length > 0) {
-            checkFaceRubbing();
+            checkFaceRubbing(faceMeshLandmarks, handLandmarks);
         }
-        
+
         // Draw overlay on canvas
-        drawFaceMeshOverlay(faceMeshLandmarks, handLandmarks);
+        drawFaceMeshOverlay(faceMeshLandmarks);
     } else {
         // No face detected - still draw hand landmarks if available
         faceMeshLandmarks = null;
         if (handLandmarks && handLandmarks.length > 0) {
-            drawFaceMeshOverlay(null, handLandmarks);
+            drawFaceMeshOverlay(null);
         }
     }
     
@@ -83,7 +151,7 @@ export function checkFaceInBounds(faceLandmarks: any) {
 }
 
 // Check if hand is rubbing face areas
-function checkFaceRubbing(faceLandmarks, allHandLandmarks) {
+function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]) {
     // Define face regions using key landmarks for time-based tracking
     // Face mesh has 468 landmarks
     
@@ -256,22 +324,19 @@ function checkFaceRubbing(faceLandmarks, allHandLandmarks) {
     }
     
     // Reset timers for areas not being touched by any hand
-    if (!areasBeingTouched.forehead) {
-        resetRubbingTimer('forehead', currentTime);
-    }
-    if (!areasBeingTouched.leftSide) {
-        resetRubbingTimer('leftSide', currentTime);
-    }
-    if (!areasBeingTouched.rightSide) {
-        resetRubbingTimer('rightSide', currentTime);
-    }
-    
-    // Update UI
-    updateFaceRubbingUI();
+    // if (!areasBeingTouched.forehead) {
+    //     resetRubbingTimer('forehead');
+    // }
+    // if (!areasBeingTouched.leftSide) {
+    //     resetRubbingTimer('leftSide');
+    // }
+    // if (!areasBeingTouched.rightSide) {
+    //     resetRubbingTimer('rightSide');
+    // }
 }
 
 // Track rubbing motion for a face area
-export function trackRubbingMotion(area, handPos, currentTime) {
+export function trackRubbingMotion(area: FaceArea, handPos: { x: any; y: any; }, currentTime: number) {
     const state = faceRubbingState[area];
     
     // Check if hand is moving (rubbing motion)
@@ -310,7 +375,7 @@ export function trackRubbingMotion(area, handPos, currentTime) {
 }
 
 // Reset rubbing timer when hand moves away
-export function resetRubbingTimer(area, currentTime) {
+export function resetRubbingTimer(area: FaceArea) {
     const state = faceRubbingState[area];
     // Only reset lastUpdateTime to pause timer, keep totalTime accumulated
     state.lastUpdateTime = null;
@@ -318,28 +383,24 @@ export function resetRubbingTimer(area, currentTime) {
 }
 
 // Hands detection results callback
-export function onHandsDetectionResults(results) {
+export function onHandsDetectionResults(results: any) {
     // For Step 2 (Palm Detection), always draw the canvas to keep preview updating
-    if (analysisSession.currentStep === 2) {
-        // Initialize canvas context if needed
-        if (!canvasCtx) {
-            canvas.width = DOM.webcam.videoWidth;
-            canvas.height = DOM.webcam.videoHeight;
-            canvasCtx = canvas.getContext('2d');
-        }
-        
+    // Initialize canvas context if needed
+    if (!canvasCtx) {
+        canvas.width = DOM.webcam.videoWidth;
+        canvas.height = DOM.webcam.videoHeight;
+        canvasCtx = canvas.getContext('2d');
+    } else {
         // Always draw video frame to keep preview updating
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
         
         // Note: Hand landmarks drawing removed for better performance
-        
         canvasCtx.restore();
     }
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        handDetected = true;
         // Store all detected hands (array) for face rubbing step
         handLandmarks = results.multiHandLandmarks;
         
@@ -439,7 +500,7 @@ export function onHandsDetectionResults(results) {
         }
         
         // Track palm detection duration for Step 2 (Palm Detection)
-        if (analysisSession.currentStep === 2 && !palmDetectionState.completed) {
+        if (!palmDetectionState.completed) {
             if (palmUp && handWithinBounds) {
                 const currentTime = Date.now();
                 
@@ -448,7 +509,7 @@ export function onHandsDetectionResults(results) {
                     palmDetectionState.detected = true;
                     utils.addLog('👋 Palm detected! Hold for 2 seconds...', 'info');
                     // Hide warning when hand is back in bounds
-                    hideHandBoundsWarning();
+                    ui.hideHandBoundsWarning();
                 }
                 
                 palmDetectionState.totalTime = currentTime - palmDetectionState.startTime;
@@ -459,17 +520,14 @@ export function onHandsDetectionResults(results) {
                     utils.addLog('✅ Palm detection complete! Auto-advancing to next step...', 'success');
                     
                     // Capture frame for step 2 (palm detection)
-                    captureStep4Frame();
+                    if (!handLandmarks || handLandmarks.length === 0) {
+                        addLog('⚠️ No hand detected for capture', 'warning');
+                    } else {
+                        cam.captureFrame(2, handLandmarks);
+                    }
                     // Hide warning on completion
-                    hideHandBoundsWarning();
-                    
-                    // Update UI to show completion
-                    updateSessionUI();
-                    
-                    // Auto-advance to next step after a short delay
-                    setTimeout(() => {
-                        nextStep();
-                    }, 1500); // 1.5 second delay to show success message
+                    ui.hideHandBoundsWarning();
+                
                 }
             } else {
                 // Reset timer if palm is no longer detected or hand is out of bounds
@@ -477,49 +535,36 @@ export function onHandsDetectionResults(results) {
                     if (palmDetectionState.detected && !handWithinBounds) {
                         utils.addLog('⚠️ Keep entire hand within frame', 'warning');
                         // Show visual warning popup
-                        showHandBoundsWarning();
+                        ui.showHandBoundsWarning();
                     }
-                    palmDetectionState.startTime = null;
+                    palmDetectionState.startTime = 0;
                     palmDetectionState.totalTime = 0;
                     palmDetectionState.detected = false;
                 }
             }
         }
         
-        // Update button state in real-time for step 2 (palm detection)
-        if (analysisSession.currentStep === 2) {
-            updateSessionUI();
-        }
     } else {
-        handDetected = false;
         palmUp = false;
         handLandmarks = [];  // Empty array when no hands detected
         
         // Reset palm detection if hand is no longer detected (but keep completion state)
-        if (analysisSession.currentStep === 2 && !palmDetectionState.completed) {
-            palmDetectionState.startTime = null;
+        if (!palmDetectionState.completed) {
+            palmDetectionState.startTime = 0;
             palmDetectionState.totalTime = 0;
             palmDetectionState.detected = false;
-        }
-        
-        // Update button state in real-time for step 2 (palm detection)
-        if (analysisSession.currentStep === 2) {
-            updateSessionUI();
         }
     }
 }
 
-// Draw face mesh landmarks and rubbing zones on canvas (Step 5)
-export function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
+// Draw face mesh landmarks and rubbing zones on canvas (Step 3)
+export function drawFaceMeshOverlay(faceLandmarks: string | any[] | null) {
     if (!canvasCtx || !faceLandmarks) return;
     
     // Get key facial landmarks for positioning
-    const noseBridge = faceLandmarks[168];  // Center nose bridge
     const foreheadTop = faceLandmarks[10];  // Top of forehead
     const leftTemple = faceLandmarks[234];  // Left temple
     const rightTemple = faceLandmarks[454]; // Right temple
-    const leftJaw = faceLandmarks[172];     // Left jaw
-    const rightJaw = faceLandmarks[397];    // Right jaw
     const chin = faceLandmarks[152];        // Chin
     
     // Calculate face dimensions
@@ -618,12 +663,8 @@ export function drawFaceMeshOverlay(faceLandmarks, handLandmarks) {
 }
 
 // Face detection results callback
-export function onFaceDetectionResults(results) {
+export function onFaceDetectionResults(results: any) {
     // Skip drawing on Step 3 (face rubbing - face mesh handles it)
-    if (analysisSession.currentStep === 3) {
-        return;
-    }
-    
     // Get canvas context
     if (!canvasCtx) {
         canvas.width = DOM.webcam.videoWidth;
@@ -633,208 +674,190 @@ export function onFaceDetectionResults(results) {
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-    }
     
-    if (results.detections && results.detections.length > 0) {
-        faceDetected = true;
+        if (results.detections && results.detections.length > 0) {
+            // Get first detected face
+            const detection = results.detections[0];
+            const bbox = detection.boundingBox;
+            
+            // Calculate face center position (normalized 0-1)
+            facePosition.x = bbox.xCenter;
+            facePosition.y = bbox.yCenter;
+            
+            // Check if face is centered (within tolerance)
+            const centerTolerance = 0.15; // 15% from center
+            const distanceFromCenterX = Math.abs(facePosition.x - 0.5);
+            const distanceFromCenterY = Math.abs(facePosition.y - 0.5);
+            
+            faceCentered = distanceFromCenterX < centerTolerance && distanceFromCenterY < centerTolerance;
+        } else {
+            faceCentered = false;
+        }
         
+        canvasCtx.restore();
+
+    }
+}
+
+export function drawFaceBoundingBox(results: any) {
+    if (!canvasCtx) return;
+    // Draw visualizations on Step 0 (preliminaries) for face centering guidance
+    // Draw bounding box
+    if (results.detections && results.detections.length > 0) {
         // Get first detected face
         const detection = results.detections[0];
         const bbox = detection.boundingBox;
-        
-        // Calculate face center position (normalized 0-1)
-        facePosition.x = bbox.xCenter;
-        facePosition.y = bbox.yCenter;
-        
-        // Check if face is centered (within tolerance)
-        const centerTolerance = 0.15; // 15% from center
-        const distanceFromCenterX = Math.abs(facePosition.x - 0.5);
-        const distanceFromCenterY = Math.abs(facePosition.y - 0.5);
-        
-        faceCentered = distanceFromCenterX < centerTolerance && distanceFromCenterY < centerTolerance;
-        
-        // Show warning toast if face is not centered (for steps that need it, but skip step 1 OCR)
-        if (analysisSession.currentStep > 0 && analysisSession.currentStep !== 1 && analysisSession.isActive && !faceCentered) {
-            showWarningToast(t('warning.centerFace'));
-        } else if (faceCentered || analysisSession.currentStep === 1) {
-            hideWarningToast();
-        }
-        
-        // Draw visualizations on Step 0 (preliminaries) for face centering guidance
-        if (analysisSession.currentStep === 0) {
-            // Draw bounding box
-            canvasCtx.strokeStyle = faceCentered ? '#00ff00' : '#ff6b00';
-            canvasCtx.lineWidth = 4;
-            canvasCtx.strokeRect(
-                bbox.xCenter * canvas.width - (bbox.width * canvas.width) / 2,
-                bbox.yCenter * canvas.height - (bbox.height * canvas.height) / 2,
-                bbox.width * canvas.width,
-                bbox.height * canvas.height
-            );
-            
-            // Draw center indicator
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const targetRadius = 100;
-            
-            // Draw target circle
-            canvasCtx.strokeStyle = faceCentered ? '#00ff00' : '#ffffff';
-            canvasCtx.lineWidth = 2;
-            canvasCtx.beginPath();
-            canvasCtx.arc(centerX, centerY, targetRadius, 0, 2 * Math.PI);
-            canvasCtx.stroke();
-            
-            // Draw crosshair
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(centerX - 20, centerY);
-            canvasCtx.lineTo(centerX + 20, centerY);
-            canvasCtx.moveTo(centerX, centerY - 20);
-            canvasCtx.lineTo(centerX, centerY + 20);
-            canvasCtx.stroke();
-        }
-        
-        // Update button state in real-time for step 0 (preliminaries)
-        if (analysisSession.currentStep === 0) {
-            updateSessionUI(); // Enable/disable next step button based on camera and face centering
-        }
-    } else {
-        faceDetected = false;
-        faceCentered = false;
-        
-        // Don't show warning for step 2 - palm detection doesn't require face tracking
-        // Only show warning on step 0 (preliminaries)
-        if (analysisSession.currentStep === 0 && analysisSession.isActive) {
-            showWarningToast(t('warning.faceNotDetected'));
-        }
-        
-        // Update button state in real-time for step 0 (preliminaries)
-        if (analysisSession.currentStep === 0) {
-            updateSessionUI(); // Disable next step button if face not centered
-        }
-    }
-    
-    // Draw OCR capture area on Step 1 (OCR Capture - always, regardless of face detection)
-    if (analysisSession.currentStep === 1) {
-        // Calculate square dimensions based on the smaller canvas dimension
-        const minDimension = Math.min(canvas.width, canvas.height);
-        const squareSize = minDimension * OCR_CAPTURE_AREA.sizePercent;
-        
-        // Center the square
-        const captureX = (canvas.width - squareSize) / 2;
-        const captureY = (canvas.height - squareSize) / 2;
-        const captureWidth = squareSize;
-        const captureHeight = squareSize;
-        
-        // Draw semi-transparent overlay outside capture area (darker for better contrast)
-        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        // Top bar
-        canvasCtx.fillRect(0, 0, canvas.width, captureY);
-        // Bottom bar
-        canvasCtx.fillRect(0, captureY + captureHeight, canvas.width, canvas.height - captureY - captureHeight);
-        // Left bar
-        canvasCtx.fillRect(0, captureY, captureX, captureHeight);
-        // Right bar
-        canvasCtx.fillRect(captureX + captureWidth, captureY, canvas.width - captureX - captureWidth, captureHeight);
-        
-        // Draw animated border around capture area
-        const animationTime = Date.now() % 2000; // 2 second cycle
-        const pulseOpacity = 0.7 + Math.sin(animationTime / 1000 * Math.PI) * 0.3;
-        
-        // Outer glow border
-        canvasCtx.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity * 0.3})`;
-        canvasCtx.lineWidth = 10;
-        canvasCtx.strokeRect(captureX - 5, captureY - 5, captureWidth + 10, captureHeight + 10);
-        
-        // Main capture area border (bright green)
-        canvasCtx.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity})`;
+        canvasCtx.strokeStyle = faceCentered ? '#00ff00' : '#ff6b00';
         canvasCtx.lineWidth = 4;
-        canvasCtx.strokeRect(captureX, captureY, captureWidth, captureHeight);
-        
-        // Draw corner brackets with animation
-        const bracketSize = 40;
-        canvasCtx.lineWidth = 6;
-        canvasCtx.lineCap = 'round';
-        canvasCtx.strokeStyle = '#00ff00';
-        
-        // Top-left bracket
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(captureX, captureY + bracketSize);
-        canvasCtx.lineTo(captureX, captureY);
-        canvasCtx.lineTo(captureX + bracketSize, captureY);
-        canvasCtx.stroke();
-        
-        // Top-right bracket
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(captureX + captureWidth - bracketSize, captureY);
-        canvasCtx.lineTo(captureX + captureWidth, captureY);
-        canvasCtx.lineTo(captureX + captureWidth, captureY + bracketSize);
-        canvasCtx.stroke();
-        
-        // Bottom-left bracket
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(captureX, captureY + captureHeight - bracketSize);
-        canvasCtx.lineTo(captureX, captureY + captureHeight);
-        canvasCtx.lineTo(captureX + bracketSize, captureY + captureHeight);
-        canvasCtx.stroke();
-        
-        // Bottom-right bracket
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(captureX + captureWidth - bracketSize, captureY + captureHeight);
-        canvasCtx.lineTo(captureX + captureWidth, captureY + captureHeight);
-        canvasCtx.lineTo(captureX + captureWidth, captureY + captureHeight - bracketSize);
-        canvasCtx.stroke();
-        
-        // Draw instruction text with background
-        const instructionText = t('overlay.placeLabel');
-        canvasCtx.font = 'bold 22px Arial';
-        canvasCtx.textAlign = 'center';
-        const textMetrics = canvasCtx.measureText(instructionText);
-        const textX = canvas.width / 2;
-        const textY = captureY - 20;
-        const padding = 10;
-        
-        // Save context for text flipping
-        canvasCtx.save();
-        
-        // Flip text horizontally to counteract the canvas mirror
-        canvasCtx.translate(textX, textY);
-        canvasCtx.scale(-1, 1);
-        
-        // Text background
-        canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        canvasCtx.fillRect(
-            -textMetrics.width / 2 - padding,
-            -22,
-            textMetrics.width + padding * 2,
-            30
+        canvasCtx.strokeRect(
+            bbox.xCenter * canvas.width - (bbox.width * canvas.width) / 2,
+            bbox.yCenter * canvas.height - (bbox.height * canvas.height) / 2,
+            bbox.width * canvas.width,
+            bbox.height * canvas.height
         );
         
-        // Text
-        canvasCtx.fillStyle = '#00ff00';
-        canvasCtx.fillText(instructionText, 0, 0);
+        // Draw center indicator
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const targetRadius = 100;
         
-        // Restore context
-        canvasCtx.restore();
-        
-        // Draw scanning line animation
-        const scanLineY = captureY + (animationTime / 2000) * captureHeight;
-        canvasCtx.strokeStyle = `rgba(0, 255, 0, ${0.5 + Math.sin(animationTime / 200) * 0.3})`;
+        // Draw target circle
+        canvasCtx.strokeStyle = faceCentered ? '#00ff00' : '#ffffff';
         canvasCtx.lineWidth = 2;
         canvasCtx.beginPath();
-        canvasCtx.moveTo(captureX, scanLineY);
-        canvasCtx.lineTo(captureX + captureWidth, scanLineY);
+        canvasCtx.arc(centerX, centerY, targetRadius, 0, 2 * Math.PI);
         canvasCtx.stroke();
         
-        // Add dimension markers (also flip this text)
-        canvasCtx.save();
-        canvasCtx.translate(canvas.width / 2, captureY + captureHeight + 25);
-        canvasCtx.scale(-1, 1);
-        canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.6)';
-        canvasCtx.font = 'bold 14px Arial';
-        canvasCtx.textAlign = 'center';
-        canvasCtx.fillText(t('overlay.autoScan'), 0, 0);
-        canvasCtx.restore();
+        // Draw crosshair
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(centerX - 20, centerY);
+        canvasCtx.lineTo(centerX + 20, centerY);
+        canvasCtx.moveTo(centerX, centerY - 20);
+        canvasCtx.lineTo(centerX, centerY + 20);
+        canvasCtx.stroke();
     }
+}
+
+export function drawOcrCaptureArea() {
+    // Draw OCR capture area on Step 1 (OCR Capture - always, regardless of face detection)
+    if (!canvasCtx) return;
+    // Calculate square dimensions based on the smaller canvas dimension
+    const minDimension = Math.min(canvas.width, canvas.height);
+    const squareSize = minDimension * cam.OCR_CAPTURE_AREA.sizePercent;
     
+    // Center the square
+    const captureX = (canvas.width - squareSize) / 2;
+    const captureY = (canvas.height - squareSize) / 2;
+    const captureWidth = squareSize;
+    const captureHeight = squareSize;
+    
+    // Draw semi-transparent overlay outside capture area (darker for better contrast)
+    canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    // Top bar
+    canvasCtx.fillRect(0, 0, canvas.width, captureY);
+    // Bottom bar
+    canvasCtx.fillRect(0, captureY + captureHeight, canvas.width, canvas.height - captureY - captureHeight);
+    // Left bar
+    canvasCtx.fillRect(0, captureY, captureX, captureHeight);
+    // Right bar
+    canvasCtx.fillRect(captureX + captureWidth, captureY, canvas.width - captureX - captureWidth, captureHeight);
+    
+    // Draw animated border around capture area
+    const animationTime = Date.now() % 2000; // 2 second cycle
+    const pulseOpacity = 0.7 + Math.sin(animationTime / 1000 * Math.PI) * 0.3;
+    
+    // Outer glow border
+    canvasCtx.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity * 0.3})`;
+    canvasCtx.lineWidth = 10;
+    canvasCtx.strokeRect(captureX - 5, captureY - 5, captureWidth + 10, captureHeight + 10);
+    
+    // Main capture area border (bright green)
+    canvasCtx.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity})`;
+    canvasCtx.lineWidth = 4;
+    canvasCtx.strokeRect(captureX, captureY, captureWidth, captureHeight);
+    
+    // Draw corner brackets with animation
+    const bracketSize = 40;
+    canvasCtx.lineWidth = 6;
+    canvasCtx.lineCap = 'round';
+    canvasCtx.strokeStyle = '#00ff00';
+    
+    // Top-left bracket
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(captureX, captureY + bracketSize);
+    canvasCtx.lineTo(captureX, captureY);
+    canvasCtx.lineTo(captureX + bracketSize, captureY);
+    canvasCtx.stroke();
+    
+    // Top-right bracket
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(captureX + captureWidth - bracketSize, captureY);
+    canvasCtx.lineTo(captureX + captureWidth, captureY);
+    canvasCtx.lineTo(captureX + captureWidth, captureY + bracketSize);
+    canvasCtx.stroke();
+    
+    // Bottom-left bracket
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(captureX, captureY + captureHeight - bracketSize);
+    canvasCtx.lineTo(captureX, captureY + captureHeight);
+    canvasCtx.lineTo(captureX + bracketSize, captureY + captureHeight);
+    canvasCtx.stroke();
+    
+    // Bottom-right bracket
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(captureX + captureWidth - bracketSize, captureY + captureHeight);
+    canvasCtx.lineTo(captureX + captureWidth, captureY + captureHeight);
+    canvasCtx.lineTo(captureX + captureWidth, captureY + captureHeight - bracketSize);
+    canvasCtx.stroke();
+    
+    // Draw instruction text with background
+    const instructionText = t('overlay.placeLabel');
+    canvasCtx.font = 'bold 22px Arial';
+    canvasCtx.textAlign = 'center';
+    const textMetrics = canvasCtx.measureText(instructionText);
+    const textX = canvas.width / 2;
+    const textY = captureY - 20;
+    const padding = 10;
+    
+    // Save context for text flipping
+    canvasCtx.save();
+    
+    // Flip text horizontally to counteract the canvas mirror
+    canvasCtx.translate(textX, textY);
+    canvasCtx.scale(-1, 1);
+    
+    // Text background
+    canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    canvasCtx.fillRect(
+        -textMetrics.width / 2 - padding,
+        -22,
+        textMetrics.width + padding * 2,
+        30
+    );
+    
+    // Text
+    canvasCtx.fillStyle = '#00ff00';
+    canvasCtx.fillText(instructionText, 0, 0);
+    
+    // Restore context
+    canvasCtx.restore();
+    
+    // Draw scanning line animation
+    const scanLineY = captureY + (animationTime / 2000) * captureHeight;
+    canvasCtx.strokeStyle = `rgba(0, 255, 0, ${0.5 + Math.sin(animationTime / 200) * 0.3})`;
+    canvasCtx.lineWidth = 2;
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(captureX, scanLineY);
+    canvasCtx.lineTo(captureX + captureWidth, scanLineY);
+    canvasCtx.stroke();
+    
+    // Add dimension markers (also flip this text)
+    canvasCtx.save();
+    canvasCtx.translate(canvas.width / 2, captureY + captureHeight + 25);
+    canvasCtx.scale(-1, 1);
+    canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.6)';
+    canvasCtx.font = 'bold 14px Arial';
+    canvasCtx.textAlign = 'center';
+    canvasCtx.fillText(t('overlay.autoScan'), 0, 0);
     canvasCtx.restore();
 }
