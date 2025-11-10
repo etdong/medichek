@@ -28,28 +28,27 @@ export let offlineMode: boolean = false;
 // API functions
 
 export async function checkServers(): Promise<{ serverOnline: boolean; minioOnline: boolean }> {
-    const serverOnline = await checkServer();
-    const minioOnline = await checkMinIOServer();
-    if (serverOnline && minioOnline) {
+    const _serverOnline = await checkServer();
+    const _minioOnline = await checkMinIOServer();
+    if (_serverOnline && _minioOnline) {
         offlineMode = false;
     } else {
         offlineMode = true;
     }
-    return { serverOnline, minioOnline };
+    return { serverOnline: _serverOnline, minioOnline: _minioOnline };
 }
 
 // Check main server connection
 async function checkServer(): Promise<boolean> {
     utils.addLog('Checking Server connection...');
     ui.updateServerStatus('Checking...');
-    
-    try {
-        return new Promise(async (resolve) => {
+    return new Promise(async (resolve) => {
+        try {
             const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
-            method: 'GET',
-            mode: 'cors',
-            headers: {
-                'Accept': 'application/json'
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Accept': 'application/json'
                 }
             });
             
@@ -62,14 +61,13 @@ async function checkServer(): Promise<boolean> {
             utils.addLog('✅ Server is online', 'success');
             utils.updateResponse(data);
             resolve(true);
-    });
-
-    } catch (err: any) {
-        ui.updateServerStatus('Disconnected');
-        utils.addLog('⚠️ Server offline (can still track locally)', 'warning');
-        utils.updateResponse({ error: err.message, note: 'Client can operate offline' });
-        return false;
-    }
+        } catch (err: any) {
+            ui.updateServerStatus('Disconnected');
+            utils.addLog('⚠️ Server offline', 'warning');
+            utils.updateResponse({ error: err.message });
+            resolve(false);
+        }
+    })
 }
 
 // Check MinIO server connection
@@ -94,11 +92,15 @@ async function checkMinIOServer(): Promise<boolean> {
         
         // Try to list buckets to test connection
         // Use callback-based approach instead of promise
-        return new Promise((resolve) => {
-            s3.listBuckets((err: any) => {
+        return new Promise<boolean>((resolve) => {
+            s3.listBuckets((err: any, data: any) => {
                 if (err) {
+                    utils.addLog('⚠️ MinIO offline', 'warning');
+                    utils.updateResponse({ error: err.message });
                     resolve(false);
                 } else {
+                    utils.addLog('✅ MinIO online', 'success');
+                    utils.updateResponse({ data: data });
                     resolve(true);
                 }
             });
@@ -112,7 +114,7 @@ async function checkMinIOServer(): Promise<boolean> {
 // Continue in offline mode
 export function continueOffline() {
     offlineMode = true;
-    ui.updateServerStatus('Offline Mode');
+    ui.updateServerStatus('Disconnected');
     utils.addLog(t('loading.offlineModeLog'), 'warning');
     ui.hideLoadingScreen();
 }

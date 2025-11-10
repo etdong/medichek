@@ -15,8 +15,6 @@ export function updateServerStatus(newStatus: string) {
     else if (newStatus === 'Offline Mode') translatedStatus = t('status.offlineMode');
     else if (newStatus === 'Disconnected') translatedStatus = t('status.disconnected');
 
-    console.log(translatedStatus, newStatus)
-
     DOM.serverStatus.textContent = translatedStatus;
     DOM.serverStatus.className = 'status-badge ' + 
         (newStatus === 'Connected' ? 'connected' : 
@@ -177,9 +175,6 @@ export function showReviewScreen() {
 // Hide loading screen and start application
 export function hideLoadingScreen() {
     DOM.loadingScreen.style.display = 'none';
-    if (!server.offlineMode) {
-        server.checkServers();
-    }
 }
 
 
