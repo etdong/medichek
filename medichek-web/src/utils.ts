@@ -1,5 +1,3 @@
-import * as DOM from './dom.js';
-
 // Utility functions
 // Utility functions (no-op stubs for removed UI elements)
 export function addLog(message: string, type: string = 'info') {
