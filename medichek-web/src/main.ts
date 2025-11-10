@@ -175,13 +175,11 @@ function createAnalysisData() {
         step_info: {
             step1: { 
                 duration: analysisSession.stepTimings.step1.duration,
-                passed: ocrRecognized,
-                skipped: ocrSkipped,
+                passed: !ocrSkipped,
             },
             step2: { 
                 duration: analysisSession.stepTimings.step2.duration,
-                passed: mp.palmDetectionState.completed,
-                skipped: palmSkipped,
+                passed: !palmSkipped,
             },
             step3: { 
                 duration: analysisSession.stepTimings.step3.duration,
@@ -345,13 +343,6 @@ async function submitAnalysis() {
     DOM.submitAnalysisBtn.disabled = true;
 
     const analysisData = createAnalysisData();
-
-    analysisData.assessment = {
-        completed: analysisSession.currentStep === analysisSession.totalSteps,
-        quality_score: 0.70 + Math.random() * 0.30,
-        issues_detected: [],
-        recommendations: []
-    };
     
     // If in offline mode, download instead of upload
     if (server.offlineMode) {
@@ -360,13 +351,20 @@ async function submitAnalysis() {
         return;
     }
     
+    // Show upload overlay for the entire upload process
+    DOM.uploadOverlay.style.display = 'flex';
+    
+    // Track upload success for both MinIO and analysis server
+    let minioUploadSuccess = false;
+    let analysisUploadSuccess = false;
+    
     // Upload to MinIO first if consent was given, to get the file URLs
     if (cam.recordingConsent) {
-        utils.addLog('☁️ Uploading files to MinIO first...', 'info');
 		if (!MedichekConfig.minIO.enabled) {
 			utils.addLog('⚠️ MinIO upload is disabled, downloading locally instead', 'warning');
+			DOM.uploadOverlay.style.display = 'none';
 			server.downloadAllRecordings(analysisData);
-			ui.showCompletionScreen(false, 'Files downloaded locally', 'MinIO upload is disabled. Your files have been downloaded to your device.');
+			ui.showCompletionScreen(false, 'Files downloaded locally', 'MinIO upload is disabled. Your files have been downloaded to your device.', '', true);
 			return;
 		}
         try {
@@ -374,54 +372,71 @@ async function submitAnalysis() {
             if (res && server.minioFileUrls) {
                 // Include MinIO URLs for all uploaded files
                 analysisData.minio_urls = minioFileUrls;
+                minioUploadSuccess = true;
                 utils.addLog('✅ MinIO upload completed, URLs captured', 'success');
             }
         } catch (error) {
-            utils.addLog('⚠️ MinIO upload failed, continuing with analysis submission', 'warning');
+            minioUploadSuccess = false;
+            utils.addLog('❌ MinIO upload failed', 'error');
         }
+    } else {
+        // If no recording consent, consider MinIO upload as "success" (not applicable)
+        minioUploadSuccess = true;
     }
     
-    utils.addLog('📤 Submitting analysis results to server...');
-    
+    // Try to upload analysis data to server (keep overlay visible)
     try {
-        const response = await fetch(`${SERVER_URL}/api/analysis/`, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(analysisData)
-        });
-        
-        if (!response.ok) {
-            // If server returns error status, try to parse error message
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `Server responded with status ${response.status}`);
-        }
-        
-        const data = await response.json();
-        utils.addLog(`✅ Analysis submitted successfully to server!`, 'success');
-        utils.updateResponse(data);
-    } catch (err: any) {
-        utils.addLog('❌ Failed to submit analysis: ' + err.message, 'error');
-        utils.addLog('💾 Analysis saved locally (can retry later)', 'info');
-        
-        // Save to localStorage as backup
-        try {
-            const savedAnalyses = JSON.parse(localStorage.getItem('medichek_analyses') || '[]');
-            savedAnalyses.push(analysisData);
-            localStorage.setItem('medichek_analyses', JSON.stringify(savedAnalyses));
-            utils.addLog('💾 Analysis saved to browser storage', 'info');
-        } catch (storageError) {
-            console.error('Failed to save to localStorage:', storageError);
-        }
-        
-        utils.updateResponse({ 
-            error: err.message,
-            localData: analysisData,
-            note: 'Analysis saved locally - you can retry submission later'
-        });
+        const result = await server.uploadAnalysisToServer(analysisData);
+        analysisUploadSuccess = (result !== null);
+    } catch (error) {
+        analysisUploadSuccess = false;
+        utils.addLog('❌ Analysis submission failed', 'error');
+    }
+    
+    // Hide upload overlay now that both uploads are complete
+    DOM.uploadOverlay.style.display = 'none';
+    
+    // Handle different scenarios based on upload results
+    if (minioUploadSuccess && analysisUploadSuccess) {
+        // Both succeeded - no download button needed
+        ui.showCompletionScreen(
+            true, 
+            t('completion.uploadSuccess'), 
+            t('completion.uploadMessage'),
+            `<p><strong>${t('completion.sessionId')}:</strong> ${analysisSession.sessionId}</p>
+             <p><strong>${t('completion.date')}:</strong> ${new Date().toLocaleString()}</p>`,
+            false
+        );
+    } else if (!minioUploadSuccess && !analysisUploadSuccess) {
+        // Both failed - show download button
+        utils.addLog('⚠️ Both MinIO and analysis uploads failed. Click download to save data locally', 'warning');
+        ui.showCompletionScreen(
+            false, 
+            'Upload Failed', 
+            'Both MinIO and analysis server uploads failed. Click the button below to download your files.',
+            '<p>⚠️ MinIO upload: Failed<br>⚠️ Analysis upload: Failed</p>',
+            true
+        );
+    } else if (!minioUploadSuccess) {
+        // MinIO failed but analysis succeeded - show download button for recordings
+        utils.addLog('⚠️ MinIO upload failed but analysis submitted. Click download to save recordings locally', 'warning');
+        ui.showCompletionScreen(
+            false, 
+            'Partial Upload Success', 
+            'Analysis was submitted but file uploads failed. Click the button below to download your files.',
+            '<p>⚠️ MinIO upload: Failed<br>✅ Analysis upload: Success</p>',
+            true
+        );
+    } else if (!analysisUploadSuccess) {
+        // Analysis failed but MinIO succeeded - show download button
+        utils.addLog('⚠️ Analysis submission failed but MinIO upload succeeded. Click download to save data locally', 'warning');
+        ui.showCompletionScreen(
+            false, 
+            'Partial Upload Success', 
+            'Files were uploaded but analysis submission failed. Click the button below to download your files.',
+            '<p>✅ MinIO upload: Success<br>⚠️ Analysis upload: Failed</p>',
+            true
+        );
     }
 }
 
@@ -894,7 +909,7 @@ function initializeHandsDetection() {
     
     handsDetection.onResults((results) => {
         if (analysisSession.currentStep !== 2 && analysisSession.currentStep !== 3) return;
-        mp.onHandsDetectionResults(results);
+        mp.onHandsDetectionResults(results, analysisSession.currentStep);
         updateSessionUI();
     });
     

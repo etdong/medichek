@@ -121,10 +121,7 @@ export function continueOffline() {
 
 // MinIO Upload Function
 export async function uploadToMinIO(analysisData: any) {
-    // Show upload overlay
-    DOM.uploadOverlay.style.display = 'flex';
-    
-    utils.addLog('☁️ Uploading all recordings and data to MinIO...', 'info');
+    utils.addLog('☁️ Uploading all recordings and images to MinIO...', 'info');
     
     try {
         // Configure AWS SDK to work with MinIO
@@ -300,33 +297,55 @@ export async function uploadToMinIO(analysisData: any) {
         utils.addLog(`📂 Videos bucket: ${videosBucketName}/${dateStr}/${sessionId}/`, 'info');
         utils.addLog(`📂 Images bucket: ${imagesBucketName}/${dateStr}/${sessionId}/`, 'info');
         
-        // Hide upload overlay
-        DOM.uploadOverlay.style.display = 'none';
-        
         // Show completion screen with download button
         const details = `
             <div>${t('completion.sessionId')}: ${sessionId}</div>
             <div>${t('completion.date')}: ${dateStr}</div>
             <div>${t('completion.totalFiles')}: ${uploadCount}</div>
         `;
-        ui.showCompletionScreen(true, t('completion.uploadSuccess'), t('completion.uploadMessage'), details, true);
         
-        return true;
+        return details;
         
     } catch (err: any) {
         utils.addLog(`❌ MinIO upload failed: ${err.message}`, 'error');
         console.error('MinIO upload error:', err);
         
-        // Hide upload overlay
-        DOM.uploadOverlay.style.display = 'none';
-        
-        // Fallback to local download
-        utils.addLog('⚠️ Falling back to local download...', 'warning');
-        downloadAllRecordings(analysisData);
-        
-        // Return null on error
+        // Return null on error (caller will handle fallback)
         return null;
     }
+}
+
+export async function uploadAnalysisToServer(analysisData: any) {
+    utils.addLog('☁️ Uploading analysis data to Server...', 'info');
+    try {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/api/analysis/`, {
+                method: 'POST',
+                mode: 'cors',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(analysisData)
+            });
+            
+            if (!response.ok) {
+                // If server returns error status, try to parse error message
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `Server responded with status ${response.status}`);
+            }
+            
+            const data = await response.json();
+            utils.addLog(`✅ Analysis submitted successfully to server!`, 'success');
+            utils.updateResponse(data);
+            
+            // Return success indicator
+            return data;
+        } catch (err: any) {
+            utils.addLog('❌ Failed to submit analysis: ' + err.message, 'error');
+            
+            // Return null on error (caller will handle fallback)
+            return null;
+        }
 }
 
 export function downloadAllRecordings(analysisData: any) {
@@ -370,7 +389,7 @@ export function downloadAllRecordings(analysisData: any) {
             const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${analysisData.sessionId}_${new Date().toISOString().replace(/:/g, '-')}.zip`;
+            a.download = `${analysisData.session_id}_${new Date().toISOString().replace(/:/g, '-')}.zip`;
             
             // Trigger download immediately
             document.body.appendChild(a);

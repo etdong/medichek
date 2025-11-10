@@ -324,15 +324,15 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
     }
     
     // Reset timers for areas not being touched by any hand
-    // if (!areasBeingTouched.forehead) {
-    //     resetRubbingTimer('forehead');
-    // }
-    // if (!areasBeingTouched.leftSide) {
-    //     resetRubbingTimer('leftSide');
-    // }
-    // if (!areasBeingTouched.rightSide) {
-    //     resetRubbingTimer('rightSide');
-    // }
+    if (!areasBeingTouched.forehead) {
+        resetRubbingTimer('forehead');
+    }
+    if (!areasBeingTouched.leftSide) {
+        resetRubbingTimer('leftSide');
+    }
+    if (!areasBeingTouched.rightSide) {
+        resetRubbingTimer('rightSide');
+    }
 }
 
 // Track rubbing motion for a face area
@@ -383,8 +383,9 @@ export function resetRubbingTimer(area: FaceArea) {
 }
 
 // Hands detection results callback
-export function onHandsDetectionResults(results: any) {
-    // For Step 2 (Palm Detection), always draw the canvas to keep preview updating
+// Step 2: Palm Detection
+export function onStep2HandsDetectionResults(results: any) {
+    // Always draw the canvas to keep preview updating
     // Initialize canvas context if needed
     if (!canvasCtx) {
         canvas.width = DOM.webcam.videoWidth;
@@ -401,7 +402,7 @@ export function onHandsDetectionResults(results: any) {
     }
     
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        // Store all detected hands (array) for face rubbing step
+        // Store first detected hand for palm detection
         handLandmarks = results.multiHandLandmarks;
         
         // For palm detection step (step 2), only check the first hand
@@ -554,6 +555,41 @@ export function onHandsDetectionResults(results: any) {
             palmDetectionState.totalTime = 0;
             palmDetectionState.detected = false;
         }
+    }
+}
+
+// Step 3: Hand Tracking for Face Rubbing (no palm detection)
+export function onStep3HandsDetectionResults(results: any) {
+    // Always draw the canvas to keep preview updating
+    // Initialize canvas context if needed
+    if (!canvasCtx) {
+        canvas.width = DOM.webcam.videoWidth;
+        canvas.height = DOM.webcam.videoHeight;
+        canvasCtx = canvas.getContext('2d');
+    } else {
+        // Always draw video frame to keep preview updating
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        
+        // Note: Hand landmarks drawing removed for better performance
+        canvasCtx.restore();
+    }
+    
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        // Store all detected hands for face rubbing (supports multiple hands)
+        handLandmarks = results.multiHandLandmarks;
+    } else {
+        handLandmarks = [];  // Empty array when no hands detected
+    }
+}
+
+// Unified handler that routes to appropriate step function
+export function onHandsDetectionResults(results: any, currentStep: number) {
+    if (currentStep === 2) {
+        onStep2HandsDetectionResults(results);
+    } else if (currentStep === 3) {
+        onStep3HandsDetectionResults(results);
     }
 }
 
