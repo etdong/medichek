@@ -523,7 +523,7 @@ export function onHandsDetectionResults(results: any) {
                     if (!handLandmarks || handLandmarks.length === 0) {
                         addLog('⚠️ No hand detected for capture', 'warning');
                     } else {
-                        cam.captureFrame(2, handLandmarks);
+                        cam.captureFrame(2);
                     }
                     // Hide warning on completion
                     ui.hideHandBoundsWarning();

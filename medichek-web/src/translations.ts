@@ -34,6 +34,7 @@ const translations: Record<string, Record<string, string>> = {
         'frame.ocrError': '❌ Error',
         'frame.ocrReview': '⚠️ Review',
         'frame.palmCaptured': '✅ Captured',
+        'frame.palmNoHandDetected': 'No hand detected. Please show your hand to the camera.',
         
         // Action Buttons
         'button.start': 'Start',
@@ -86,11 +87,23 @@ const translations: Record<string, Record<string, string>> = {
         'ocr.fail.message': 'The automatic verification could not detect the product label the captured image.',
         'ocr.fail.question': 'What would you like to do?',
         'ocr.fail.retryLabel': 'Retry:',
-        'ocr.fail.retry': 'Capture a new image with better lighting or positioning',
+        'ocr.fail.retry': 'Show the product label in better lighting or position',
         'ocr.fail.continueLabel': 'Continue:',
         'ocr.fail.continue': 'Submit the image for manual review',
         'ocr.fail.retryBtn': 'Retry Capture',
         'ocr.fail.continueBtn': 'Continue',
+        
+        // Palm Detection Fail Modal
+        'palm.fail.title': 'Product Not Detected',
+        'palm.fail.message': 'We weren\'t able to scan the product in your hand.',
+        'palm.fail.instruction': 'You can continue with the manual capture for backend review.',
+        'palm.fail.question': 'What would you like to do?',
+        'palm.fail.retryLabel': 'Retry:',
+        'palm.fail.retry': 'Show your palm more clearly with the product visible, fingers pointing down.',
+        'palm.fail.continueLabel': 'Continue:',
+        'palm.fail.continue': 'Submit the image for manual review',
+        'palm.fail.retryBtn': 'Retry Capture',
+        'palm.fail.continueBtn': 'Continue',
         
         // Review Screen
         'review.title': 'Session Complete!',
@@ -170,6 +183,7 @@ const translations: Record<string, Record<string, string>> = {
         'frame.ocrError': '❌ 错误',
         'frame.ocrReview': '⚠️ 审核',
         'frame.palmCaptured': '✅ 已拍摄',
+        'frame.palmNoHandDetected': '未检测到手部。请将您的手展示给摄像头。',
         
         // Action Buttons
         'button.start': '开始',
@@ -222,11 +236,23 @@ const translations: Record<string, Record<string, string>> = {
         'ocr.fail.message': '自动验证无法检测到拍摄图像中的产品标签。',
         'ocr.fail.question': '您想怎么做？',
         'ocr.fail.retryLabel': '重试：',
-        'ocr.fail.retry': '在更好的光线或位置下拍摄新图像',
+        'ocr.fail.retry': '在更好的光线或位置展示产品标签',
         'ocr.fail.continueLabel': '继续：',
         'ocr.fail.continue': '提交图像以供人工审核',
         'ocr.fail.retryBtn': '重试拍摄',
         'ocr.fail.continueBtn': '继续',
+        
+        // Palm Detection Fail Modal
+        'palm.fail.title': '无法检测产品',
+        'palm.fail.message': '我们无法扫描您手中的产品。',
+        'palm.fail.instruction': '您可以继续手动拍摄以供后端审核。',
+        'palm.fail.question': '您想怎么做？',
+        'palm.fail.retryLabel': '重试：',
+        'palm.fail.retry': '在手掌上更清晰地展示产品，手指向下。',
+        'palm.fail.continueLabel': '继续：',
+        'palm.fail.continue': '提交图像以供人工审核',
+        'palm.fail.retryBtn': '重试拍摄',
+        'palm.fail.continueBtn': '继续',
         
         // Review Screen
         'review.title': '会话完成！',

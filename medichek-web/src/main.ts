@@ -3,7 +3,7 @@ import * as utils from './utils.js';
 import * as cam from './camera.js';
 import * as server from './server_manager.js';
 import * as ui from './ui_manager.js';
-import * as mp from './mediapipe_handler.js';
+import * as mp from './mp_manager.js';
 
 import { FaceMesh } from '@mediapipe/face_mesh';
 import { FaceDetection } from '@mediapipe/face_detection';
@@ -120,6 +120,8 @@ export function updateSessionUI() {
                 setTimeout(() => {
                     nextStep();
                 }, 1500); // 1.5 second delay to show success message
+            } else if (palmSkipped) {
+                stepProgress.textContent = t('steps.ocr.proceedingManual');  // Reusing OCR's manual review text
             } else if (mp.palmDetectionState.detected && mp.palmDetectionState.totalTime > 0) {
                 const progress = Math.min(100, Math.round((mp.palmDetectionState.totalTime / mp.PALM_DETECTION_REQUIRED) * 100));
                 stepProgress.textContent = t('steps.palm.holdSteady', { progress: progress.toString() });
@@ -174,10 +176,12 @@ function createAnalysisData() {
             step1: { 
                 duration: analysisSession.stepTimings.step1.duration,
                 passed: ocrRecognized,
+                skipped: ocrSkipped,
             },
             step2: { 
                 duration: analysisSession.stepTimings.step2.duration,
                 passed: mp.palmDetectionState.completed,
+                skipped: palmSkipped,
             },
             step3: { 
                 duration: analysisSession.stepTimings.step3.duration,
@@ -227,9 +231,9 @@ function nextStep() {
         return;
     }
     
-    // Step 2 (Palm Detection) requires palm detection for 2 seconds
-    if (analysisSession.currentStep === 2 && !mp.palmDetectionState.completed) {
-        utils.addLog('⚠️ Please show your palm to the camera with fingers pointing down for 2 seconds', 'warning');
+    // Step 2 (Palm Detection) requires palm detection for 2 seconds OR manual skip
+    if (analysisSession.currentStep === 2 && !mp.palmDetectionState.completed && !palmSkipped) {
+        utils.addLog('⚠️ Please show your palm to the camera with fingers pointing down for 1 second', 'warning');
         return;
     }
     
@@ -477,6 +481,12 @@ export function setOcrSkipped(skipped: boolean) {
     ocrSkipped = skipped;
 }
 
+// Palm detection state
+export let palmSkipped = false;
+export function setPalmSkipped(skipped: boolean) {
+    palmSkipped = skipped;
+}
+
 export async function performOCR(canvas: any) {
     try {
         const worker = await createWorker();
@@ -590,11 +600,16 @@ DOM.langZhBtn.addEventListener('click', () => {
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
-    currentOcrStatus = 'analyzing';
     if (analysisSession.currentStep == 1) {
+        currentOcrStatus = 'analyzing';
         performOCR(await cam.captureFrame(1));
-    } else {
-        await cam.captureFrame(2, mp.handLandmarks);
+    } else if (analysisSession.currentStep == 2) {
+        // Capture frame for step 2 (palm detection)
+        await cam.captureFrame(2);
+        if (cam.currentPalmStatus === 'captured') {
+            // Show palm detection fail modal (since step 2 requires no OCR, just manual capture for backend review)
+            DOM.palmFailModal.style.display = 'flex';
+        }
     }
 });
 
@@ -717,6 +732,41 @@ DOM.continueAnywayBtn.addEventListener('click', () => {
     DOM.ocrStatusBadge.className = 'ocr-status warning';
 
     utils.addLog('OCR verification skipped - proceeding with manual review', 'warning');
+    
+    // Automatically advance to the next step
+    nextStep();
+});
+
+// Palm detection modal event handlers
+DOM.retryPalmBtn.addEventListener('click', () => {
+    // Hide the modal
+    DOM.palmFailModal.style.display = 'none';
+    
+    // Reset the captured frame state to allow new capture
+    cam.resetCapturedFrame();
+    setPalmSkipped(false);
+    
+    // Re-enable capture button for retry
+    DOM.captureFrameBtn.disabled = false;
+    
+    utils.addLog('Retry palm detection - Capture a new frame', 'info');
+    
+    // Update UI to allow recapture
+    updateSessionUI();
+});
+
+DOM.continuePalmAnywayBtn.addEventListener('click', () => {
+    // Hide the modal
+    DOM.palmFailModal.style.display = 'none';
+
+    // Mark as manually reviewed/skipped
+    setPalmSkipped(true);
+    
+    // Update the status badge to show manual review
+    DOM.palmStatusBadge.textContent = t('frame.ocrReview');  // Reusing the review text
+    DOM.palmStatusBadge.className = 'palm-status warning';
+
+    utils.addLog('Palm detection skipped - proceeding with manual review', 'warning');
     
     // Automatically advance to the next step
     nextStep();

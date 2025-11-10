@@ -30,6 +30,10 @@ export const ocrFailModal: HTMLElement = document.getElementById('ocr-fail-modal
 export const retryOcrBtn: HTMLButtonElement = document.getElementById('retry-ocr') as HTMLButtonElement;
 export const continueAnywayBtn: HTMLButtonElement = document.getElementById('continue-anyway') as HTMLButtonElement;
 
+export const palmFailModal: HTMLElement = document.getElementById('palm-fail-modal') as HTMLElement;
+export const retryPalmBtn: HTMLButtonElement = document.getElementById('retry-palm') as HTMLButtonElement;
+export const continuePalmAnywayBtn: HTMLButtonElement = document.getElementById('continue-palm-anyway') as HTMLButtonElement;
+
 export const recordingConsentModal: HTMLElement = document.getElementById('recording-consent-modal') as HTMLElement;
 export const acceptRecordingBtn: HTMLButtonElement = document.getElementById('accept-recording-btn') as HTMLButtonElement;
 export const declineRecordingBtn: HTMLButtonElement = document.getElementById('decline-recording-btn') as HTMLButtonElement;

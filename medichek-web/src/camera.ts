@@ -1,6 +1,7 @@
 import * as DOM from './dom.js';
-import { countdownNumber } from './dom.js';
 import * as utils from './utils.js';
+import * as mp from './mp_manager.js';
+import * as ui from './ui_manager.js';
 import { t } from './translations.js';
 import { createWorker } from 'tesseract.js';
 
@@ -184,7 +185,7 @@ export function stopStepRecording() {
 }
 
 // Frame capture and OCR functionality
-export async function captureFrame(stepNum: number, handLandmarks: any[] = []) {
+export async function captureFrame(stepNum: number) {
     // Disable capture button to prevent multiple clicks
     DOM.captureFrameBtn.disabled = true;
     
@@ -202,7 +203,7 @@ export async function captureFrame(stepNum: number, handLandmarks: any[] = []) {
             // Re-trigger animation
             DOM.countdownNumber.style.animation = 'none';
             setTimeout(() => {
-                countdownNumber.style.animation = 'pulse 1s ease-in-out';
+                DOM.countdownNumber.style.animation = 'pulse 1s ease-in-out';
             }, 10);
             
             utils.addLog(`${i}...`, 'info');
@@ -278,7 +279,13 @@ export async function captureFrame(stepNum: number, handLandmarks: any[] = []) {
         utils.addLog('📸 Capturing palm area...', 'info');
         
         // Use the first detected hand for capture
-        const firstHand = handLandmarks[0];
+        if (!mp.handLandmarks || mp.handLandmarks.length === 0) {
+            ui.showWarningToast(t('frame.palmNoHandDetected'));
+            utils.addLog('❌ No hand detected for palm capture', 'error');
+            return;
+        }
+
+        const firstHand = mp.handLandmarks[0];
 
         // Calculate bounding box around hand landmarks
         let minX = 1, minY = 1, maxX = 0, maxY = 0;

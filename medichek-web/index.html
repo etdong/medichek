@@ -211,6 +211,29 @@
             </div>
         </div>
         
+        <!-- Palm Detection Fail Modal -->
+        <div id="palm-fail-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-icon">⚠️</span>
+                    <h3 class="modal-title" data-i18n="palm.fail.title">Product Not Detected</h3>
+                </div>
+                <div class="modal-body">
+                    <p data-i18n="palm.fail.message">We weren't able to scan the product in your hand.</p>
+                    <p data-i18n="palm.fail.instruction">You can continue with manual capture for backend review.</p>
+                    <p><strong data-i18n="palm.fail.question">What would you like to do?</strong></p>
+                    <ul>
+                        <li><strong data-i18n="palm.fail.retryLabel">Retry:</strong> <span data-i18n="palm.fail.retry">Capture a new image with the product more visible</span></li>
+                        <li><strong data-i18n="palm.fail.continueLabel">Continue:</strong> <span data-i18n="palm.fail.continue">Submit the image for manual review</span></li>
+                    </ul>
+                </div>
+                <div class="modal-actions">
+                    <button id="retry-palm" class="btn btn-primary" data-i18n="palm.fail.retryBtn">Retry Capture</button>
+                    <button id="continue-palm-anyway" class="btn btn-secondary" data-i18n="palm.fail.continueBtn">Continue</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Recording Consent Modal -->
         <div id="recording-consent-modal" class="modal-overlay" style="display: none;">
             <div class="modal-content">
