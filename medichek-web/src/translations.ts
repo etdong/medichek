@@ -2,7 +2,7 @@
 const translations: Record<string, Record<string, string>> = {
     en: {
         // Loading Screen
-        'loading.title': 'Initializing Medichek',
+        'loading.title': 'Initializing',
         'loading.message': 'Checking server connections...',
         'loading.server': 'Backend:',
         'loading.minio': 'MinIO:',
@@ -54,7 +54,7 @@ const translations: Record<string, Record<string, string>> = {
         'steps.palm.title': 'Step 2: Show product on hand/fingers',
         'steps.palm.complete': 'Detection complete ✓ - Advancing...',
         'steps.palm.holdSteady': 'Hold hand steady: {progress}%',
-        'steps.palm.showProduct': 'Show the product clearly on hand/palm/fingers',
+        'steps.palm.showProduct': 'Show the product clearly on hand/palm/fingers. We will automatically scan it',
         'steps.faceRubbing.title': 'Step 3: Rub Face Areas',
         'steps.faceRubbing.progress': 'Forehead: {forehead} | Left: {left} | Right: {right}',
         'steps.faceRubbing.coverage': 'Face Coverage',
@@ -138,7 +138,7 @@ const translations: Record<string, Record<string, string>> = {
     },
     zh: {
         // Loading Screen
-        'loading.title': '正在初始化 Medichek',
+        'loading.title': '正在初始化',
         'loading.message': '正在检查服务器连接...',
         'loading.server': '服务器：',
         'loading.minio': 'MinIO：',
@@ -190,7 +190,7 @@ const translations: Record<string, Record<string, string>> = {
         'steps.palm.title': '步骤 2：在手/手指上展示产品',
         'steps.palm.complete': '检测完成 ✓ - 进入下一步...',
         'steps.palm.holdSteady': '保持手部稳定：{progress}%',
-        'steps.palm.showProduct': '在手/手掌/手指上清晰展示产品',
+        'steps.palm.showProduct': '在手/手掌/手指上清晰展示产品 (自动扫描已激活）',
         'steps.faceRubbing.title': '步骤 3：揉搓面部区域',
         'steps.faceRubbing.progress': '额头：{forehead} | 左侧：{left} | 右侧：{right}',
         'steps.faceRubbing.coverage': '面部覆盖率',

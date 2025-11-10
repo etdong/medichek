@@ -33,6 +33,7 @@ body {
     padding: 5px;
     border-radius: 8px;
     border: 1px solid #3a3a3a;
+    z-index: 20000;
 }
 
 .lang-btn {
@@ -46,6 +47,7 @@ body {
     font-weight: 500;
     transition: all 0.2s ease;
     white-space: nowrap;
+    z-index: 3000;
 }
 
 .lang-btn:hover {
@@ -804,6 +806,8 @@ body {
     .lang-btn {
         padding: 5px 10px;
         font-size: 0.75em;
+        z-index: 3000;
+
     }
 }
 
@@ -899,6 +903,7 @@ body {
         padding: 4px 8px;
         font-size: 0.7em;
         border-radius: 4px;
+        z-index: 3000;
     }
 }
 

@@ -110,7 +110,8 @@ export function updateSessionUI() {
         }
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
-        // Hide next step button - will auto-advance when palm detection completes
+        DOM.captureFrameBtn.style.display = 'block';
+        DOM.captureFrameBtn.disabled = !cameraEnabled;
         if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
         if (stepProgress) {
             if (mp.palmDetectionState.completed) {
@@ -168,25 +169,24 @@ function createAnalysisData() {
         end_time: new Date().toISOString(),
         session_duration_seconds: (Date.now() - analysisSession.startTime) / 1000,
         total_steps: analysisSession.totalSteps,
-        completed_steps: analysisSession.currentStep,
-        ocrPassed: ocrRecognized,
         // Step-by-step timing data (duration only)
-        step_timings: {
-            step1_ocr_capture_seconds: analysisSession.stepTimings.step1.duration,
-            step2_palm_detection_seconds: analysisSession.stepTimings.step2.duration,
-            step3_face_rubbing_seconds: analysisSession.stepTimings.step3.duration,
-            // Detailed face rubbing data for step 3
-            step3_rubbing_details: {
+        step_info: {
+            step1: { 
+                duration: analysisSession.stepTimings.step1.duration,
+                passed: ocrRecognized,
+            },
+            step2: { 
+                duration: analysisSession.stepTimings.step2.duration,
+                passed: mp.palmDetectionState.completed,
+            },
+            step3: { 
+                duration: analysisSession.stepTimings.step3.duration,
                 forehead_seconds: mp.faceRubbingState.forehead.totalTime / 1000,
                 left_cheek_seconds: mp.faceRubbingState.leftSide.totalTime / 1000,
                 right_cheek_seconds: mp.faceRubbingState.rightSide.totalTime / 1000,
-                total_rubbing_time_seconds: (mp.faceRubbingState.forehead.totalTime + 
-                                             mp.faceRubbingState.leftSide.totalTime + 
-                                             mp.faceRubbingState.rightSide.totalTime) / 1000,
-                all_areas_completed: mp.faceRubbingState.forehead.rubbed && 
-                                   mp.faceRubbingState.leftSide.rubbed && 
-                                   mp.faceRubbingState.rightSide.rubbed
-            }
+                coverage: mp.faceRubbingState.totalCoverage,
+                passed: mp.faceRubbingState.forehead.rubbed && mp.faceRubbingState.leftSide.rubbed && mp.faceRubbingState.rightSide.rubbed,
+            },
         },
         
         // Session metadata
@@ -197,7 +197,7 @@ function createAnalysisData() {
 
 		assessment: {
 			completed: analysisSession.currentStep === analysisSession.totalSteps,
-			quality_score: 0.70 + Math.random() * 0.30,
+			quality_score: 100,
 			issues_detected: [],
 			recommendations: []
     	}
@@ -591,7 +591,11 @@ DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     currentOcrStatus = 'analyzing';
-    performOCR(await cam.captureFrame(1));
+    if (analysisSession.currentStep == 1) {
+        performOCR(await cam.captureFrame(1));
+    } else {
+        await cam.captureFrame(2, mp.handLandmarks);
+    }
 });
 
 DOM.nextStepBtn.addEventListener('click', nextStep);

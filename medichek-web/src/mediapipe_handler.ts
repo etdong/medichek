@@ -11,7 +11,7 @@ import { addLog } from './utils.js';
 let canvasCtx: CanvasRenderingContext2D | null = null;
 
 let faceMeshLandmarks: any = null;
-let handLandmarks: any[] = [];  // Array to store multiple detected hands
+export let handLandmarks: any[] = [];  // Array to store multiple detected hands
 
 let palmUp = false;
 
@@ -76,7 +76,7 @@ export let faceRubbingState: {
 
 const RUBBING_MOTION_THRESHOLD = 0.005; // Minimum movement to count as rubbing (lowered for better sensitivity)
 const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landmark as "covered" (stricter detection)
-export const PALM_DETECTION_REQUIRED = 2000; // 2 seconds in milliseconds
+export const PALM_DETECTION_REQUIRED = 1000; // 1 second in milliseconds
 export const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
 
 
