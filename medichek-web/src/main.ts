@@ -15,10 +15,6 @@ import { createWorker } from 'tesseract.js'
 
 //#region Declarations
 
-// Configuration - use external config if available, otherwise fallback
-const SERVER_URL = (MedichekConfig && MedichekConfig.getServerUrl()) 
-    || 'http://127.0.0.1:8000';
-
 // Current server status (for re-translation when language changes)
 let currentServerStatus = 'checking'; // 'checking', 'online', or 'offline'
 let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'

@@ -301,7 +301,7 @@ const translations: Record<string, Record<string, string>> = {
 };
 
 // Current language
-let currentLanguage: string = localStorage.getItem('medichek-language') || 'en';
+let currentLanguage: string = localStorage.getItem('medichek-language') || 'zh';
 
 // Get translation
 export function t(key: string, replacements: Record<string, string> = {}): string {
