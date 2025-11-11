@@ -5,22 +5,12 @@ import * as server from './server_manager.js';
 import * as ui from './ui_manager.js';
 import * as mp from './mp_manager.js';
 
-import { FaceMesh } from '@mediapipe/face_mesh';
-import { FaceDetection } from '@mediapipe/face_detection';
-import { Hands } from '@mediapipe/hands';
+import { FilesetResolver, FaceDetector, HandLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { Camera } from '@mediapipe/camera_utils';
-import { MedichekConfig } from './config';
 import { t, updateLanguage } from './translations';
 import Tesseract from 'tesseract.js';
 
 //#region Declarations
-
-// Current server status (for re-translation when language changes)
-let currentServerStatus = 'checking'; // 'checking', 'online', or 'offline'
-let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'
-
-// Current frame capture statuses (for re-translation when language changes)
-let currentOcrStatus = 'null'; // 'analyzing', 'recognized', 'notFound', 'error', 'review', or null
 
 // Global state - Client-side only, no server sessions
 let analysisSession = {
@@ -46,12 +36,16 @@ let cameraEnabled = false;
 // MinIO uploaded file URLs (populated after upload)
 let minioFileUrls: Record<string, string> = {};
 
-let faceDetection: FaceDetection | null = null;
-let handsDetection: Hands | null = null;
-let faceMesh: FaceMesh | null = null;
+let faceDetector: FaceDetector | null = null;
+let handLandmarker: HandLandmarker | null = null;
+let faceLandmarker: FaceLandmarker | null = null;
 
 // Automatic OCR scanning
 let autoOcrInterval: NodeJS.Timeout | null = null;
+
+const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+);
 
 //#endregion
 
@@ -180,7 +174,7 @@ function createAnalysisData() {
                 forehead_seconds: mp.faceRubbingState.forehead.totalTime / 1000,
                 left_cheek_seconds: mp.faceRubbingState.leftSide.totalTime / 1000,
                 right_cheek_seconds: mp.faceRubbingState.rightSide.totalTime / 1000,
-                coverage: mp.faceRubbingState.totalCoverage,
+                coverage_percentage: mp.faceRubbingState.totalCoverage,
                 passed: mp.faceRubbingState.forehead.rubbed && mp.faceRubbingState.leftSide.rubbed && mp.faceRubbingState.rightSide.rubbed,
             },
         },
@@ -193,7 +187,7 @@ function createAnalysisData() {
 
 		assessment: {
 			completed: analysisSession.currentStep === analysisSession.totalSteps,
-			quality_score: 100,
+			quality_score: 0,
 			issues_detected: [],
 			recommendations: []
     	}
@@ -355,13 +349,6 @@ async function submitAnalysis() {
     
     // Upload to MinIO first if consent was given, to get the file URLs
     if (cam.recordingConsent) {
-		if (!MedichekConfig.minIO.enabled) {
-			utils.addLog('⚠️ MinIO upload is disabled, downloading locally instead', 'warning');
-			DOM.uploadOverlay.style.display = 'none';
-			server.downloadAllRecordings(analysisData);
-			ui.showCompletionScreen(false, 'Files downloaded locally', 'MinIO upload is disabled. Your files have been downloaded to your device.', '', true);
-			return;
-		}
         try {
             const res = await server.uploadToMinIO(analysisData);
             if (res && server.minioFileUrls) {
@@ -398,9 +385,9 @@ async function submitAnalysis() {
             true, 
             t('completion.uploadSuccess'), 
             t('completion.uploadMessage'),
-            `<p><strong>${t('completion.sessionId')}:</strong> ${analysisSession.sessionId}</p>
+            `<p><strong>${t('completion.sessionId')}:</strong> ${analysisData.session_id}</p>
              <p><strong>${t('completion.date')}:</strong> ${new Date().toLocaleString()}</p>`,
-            false
+            true
         );
     } else if (!minioUploadSuccess && !analysisUploadSuccess) {
         // Both failed - show download button
@@ -453,7 +440,6 @@ export function startAutoOcrScanning() {
             clearInterval(autoOcrInterval!);
             // Mark as recognized
             setOcrRecognized(true);
-            currentOcrStatus = 'recognized';
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';
@@ -530,7 +516,6 @@ export async function performOCR(canvas: any) {
             utils.addLog('✅ Product label recognized!', 'success');
             
             // Update compact display - only show success status
-            currentOcrStatus = 'recognized';
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';  // No detailed message
@@ -551,7 +536,6 @@ export async function performOCR(canvas: any) {
             utils.addLog('❌ Product label not found in image. Try again.', 'error');
             
             // Update compact display - only show failed status
-            currentOcrStatus = 'notFound';
             DOM.ocrStatusBadge.textContent = t('frame.ocrNotFound');
             DOM.ocrStatusBadge.className = 'ocr-status failed';
             DOM.ocrResultCompact.innerHTML = '';  // No detailed message
@@ -567,7 +551,6 @@ export async function performOCR(canvas: any) {
         utils.addLog('❌ OCR failed: ' + err.message, 'error');
         
         // Update compact display - only show error status
-        currentOcrStatus = 'error';
         DOM.ocrStatusBadge.textContent = t('frame.ocrError');
         DOM.ocrStatusBadge.className = 'ocr-status failed';
         DOM.ocrResultCompact.innerHTML = '';  // No detailed error message
@@ -589,10 +572,24 @@ function restartSession() {
 //#region Event listeners
 
 addEventListener('load', () => {
-    // Initialize language
-    updateLanguage(localStorage.getItem('medichek-language') || 'en');
-    
-    // Initialize application
+    // Check if language is already set
+    // Show language selection modal and hide loading screen
+    DOM.languageSelectModal.style.display = 'flex';
+    DOM.loadingScreen.style.display = 'none';
+});
+
+// Event listeners for language selection modal
+DOM.selectLangEnBtn.addEventListener('click', () => {
+    updateLanguage('en');
+    DOM.languageSelectModal.style.display = 'none';
+    DOM.loadingScreen.style.display = 'flex';
+    initializeApplication();
+});
+
+DOM.selectLangZhBtn.addEventListener('click', () => {
+    updateLanguage('zh');
+    DOM.languageSelectModal.style.display = 'none';
+    DOM.loadingScreen.style.display = 'flex';
     initializeApplication();
 });
 
@@ -603,31 +600,11 @@ DOM.retryConnectionBtn.addEventListener('click', async () => {
     await initializeApplication();
 });
 
-// Language selector event listeners
-DOM.langEnBtn.addEventListener('click', () => {
-    updateLanguage('en');
-    // Re-translate dynamic content after language change
-    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
-    ui.updateServerStatus(currentServerStatus);
-    ui.updateFrameCaptureStatuses(currentOcrStatus, cam.currentPalmStatus);
-    updateSessionUI();
-});
-
-DOM.langZhBtn.addEventListener('click', () => {
-    updateLanguage('zh');
-    // Re-translate dynamic content after language change
-    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
-    ui.updateServerStatus(currentServerStatus);
-    ui.updateFrameCaptureStatuses(currentOcrStatus, cam.currentPalmStatus);
-    updateSessionUI();
-});
-
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks
     if (analysisSession.currentStep == 1) {
-        currentOcrStatus = 'analyzing';
         stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
     } else if (analysisSession.currentStep == 2) {
@@ -671,38 +648,75 @@ DOM.acceptRecordingBtn.addEventListener('click', async () => {
 		if (cameraEnabled) {
 			utils.addLog('✅ Camera access granted', 'success');
 			// Initialize MediaPipe Face Detection
-			initializeFaceDetection();
+			await initializeFaceDetection();
 			
 			// Initialize MediaPipe Hands Detection
-			initializeHandsDetection();
+			await initializeHandsDetection();
 			
 			// Initialize MediaPipe Face Mesh (for Step 3)
-			initializeFaceMesh();
+			await initializeFaceMesh();
 			
 			// Start camera processing with MediaPipe
+			let lastVideoTime = -1;
 			await cam.setCameraInstance(new Camera(DOM.webcam, {
 				onFrame: async () => {
 					// Optimize by only running necessary models for current step
+					const currentTime = performance.now();
 					
 					// Step 0 (Preliminaries): Only need face detection
 					if (analysisSession.currentStep === 0) {
-						await faceDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && faceDetector) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = faceDetector.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							if (analysisSession.isActive && !mp.faceCentered) {
+								ui.showWarningToast(t('warning.centerFace'));
+							} else {
+								ui.hideWarningToast();
+							}
+							mp.onFaceDetectionResults(results);
+							mp.drawFaceBoundingBox(results);
+							updateSessionUI();
+						}
 					}
 					// Step 1 (OCR): Use face detection to keep camera feed updating and draw OCR overlay
 					else if (analysisSession.currentStep === 1) {
-						await faceDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && faceDetector) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = faceDetector.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results and draw OCR overlay
+							mp.onFaceDetectionResults(results);
+							mp.drawOcrCaptureArea();
+							updateSessionUI();
+						}
 					}
 					// Step 2 (Palm Detection): Only need hands detection (no face tracking needed)
 					else if (analysisSession.currentStep === 2) {
-						await handsDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && handLandmarker) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = handLandmarker.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							mp.onHandsDetectionResults(results, analysisSession.currentStep);
+							updateSessionUI();
+						}
 					}
 					// Step 3 (Face Rubbing): Need both models - run in parallel for better FPS
 					else if (analysisSession.currentStep === 3) {
-						// Run both models in parallel instead of sequentially
-						await Promise.all([
-							faceMesh!.send({image: DOM.webcam}),
-							handsDetection!.send({image: DOM.webcam})
-						]);
+						if (DOM.webcam.currentTime !== lastVideoTime && handLandmarker && faceLandmarker) {
+							lastVideoTime = DOM.webcam.currentTime;
+							
+							// Run both detections
+							const handResults = handLandmarker.detectForVideo(DOM.webcam, currentTime);
+							const faceResults = faceLandmarker.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							mp.onFaceMeshResults(faceResults);
+							mp.onHandsDetectionResults(handResults, analysisSession.currentStep);
+							updateSessionUI();
+						}
 					}
 				},
 				width: 640,   // Reduced from 1280 for better FPS (processing resolution)
@@ -755,7 +769,6 @@ DOM.continueAnywayBtn.addEventListener('click', () => {
     setOcrSkipped(true);
     
     // Update the status badge to show manual review
-    currentOcrStatus = 'review';
     DOM.ocrStatusBadge.textContent = t('frame.ocrReview');
     DOM.ocrStatusBadge.className = 'ocr-status warning';
 
@@ -827,31 +840,25 @@ DOM.downloadAnalysisBtn.addEventListener('click', async () => {
 // Initialize
 async function initializeApplication() {
 	// Check Server
-	currentServerStatus = 'Checking...';
 	DOM.serverCheckStatus.textContent = t('loading.checking');
 	DOM.serverCheckStatus.className = 'check-status checking';
-	currentMinioStatus = 'Checking...';
 	DOM.minioCheckStatus.textContent = t('loading.checking');
 	DOM.minioCheckStatus.className = 'check-status checking';
 
     const { serverOnline, minioOnline } = await server.checkServers();
 
 	if (serverOnline) {
-		currentServerStatus = 'Connected';
 		DOM.serverCheckStatus.textContent = t('loading.online');
 		DOM.serverCheckStatus.className = 'check-status online';
 	} else {
-		currentServerStatus = 'Disconnected';
 		DOM.serverCheckStatus.textContent = t('loading.offline');
 		DOM.serverCheckStatus.className = 'check-status offline';
 	}
 	
 	if (minioOnline) {
-		currentMinioStatus = 'Connected';
 		DOM.minioCheckStatus.textContent = t('loading.online');
 		DOM.minioCheckStatus.className = 'check-status online';
 	} else {
-		currentMinioStatus = 'Disconnected';
 		DOM.minioCheckStatus.textContent = t('loading.offline');
 		DOM.minioCheckStatus.className = 'check-status offline';
 	}
@@ -868,87 +875,56 @@ async function initializeApplication() {
 }
 
 // Initialize MediaPipe Face Detection
-function initializeFaceDetection() {
+async function initializeFaceDetection() {
     utils.addLog('🤖 Initializing MediaPipe Face Detection...', 'info');
     
-    faceDetection = new FaceDetection({
-        locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
-        }
-    });
-    
-    faceDetection.setOptions({
-        model: 'short',
+    faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
         minDetectionConfidence: 0.5
-    });
-    
-    faceDetection.onResults((results) => {
-        // Show warning toast if face is not centered (for steps that need it, but skip step 1 OCR)
-        if (analysisSession.currentStep > 0 && analysisSession.currentStep !== 1 && analysisSession.isActive && !mp.faceCentered) {
-            ui.showWarningToast(t('warning.centerFace'));
-        } else if (mp.faceCentered || analysisSession.currentStep === 1) {
-            ui.hideWarningToast();
-        }
-        mp.onFaceDetectionResults(results);
-        if (analysisSession.currentStep === 0) {
-            mp.drawFaceBoundingBox(results);
-        }
-        if (analysisSession.currentStep === 1) {
-            mp.drawOcrCaptureArea();
-        }
-        updateSessionUI();
     });
     
     utils.addLog('✅ Face detection initialized', 'success');
 }
 
 // Initialize MediaPipe Hands
-function initializeHandsDetection() {
+async function initializeHandsDetection() {
     utils.addLog('🤖 Initializing MediaPipe Hands Detection...', 'info');
     
-    handsDetection = new Hands({
-        locateFile: (file: any) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }
-    });
-    
-    handsDetection.setOptions({
-        maxNumHands: 2,  // Allow detection of up to 2 hands
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
-    });
-    
-    handsDetection.onResults((results) => {
-        if (analysisSession.currentStep !== 2 && analysisSession.currentStep !== 3) return;
-        mp.onHandsDetectionResults(results, analysisSession.currentStep);
-        updateSessionUI();
     });
     
     utils.addLog('✅ Hands detection initialized', 'success');
 }
 
 // Initialize MediaPipe Face Mesh (for Step 3)
-function initializeFaceMesh() {
+async function initializeFaceMesh() {
     utils.addLog('🤖 Initializing MediaPipe Face Mesh...', 'info');
     
-    faceMesh = new FaceMesh({
-        locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-        }
-    });
-    
-    faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: false,  // Disable for better performance (we don't need iris/lips detail)
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-    
-    faceMesh.onResults((results) => {
-        if (analysisSession.currentStep !== 3) return;
-        mp.onFaceMeshResults(results);
-        updateSessionUI();
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+        minFaceDetectionConfidence: 0.5,
+        minFacePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false
     });
     
     utils.addLog('✅ Face mesh initialized', 'success');
