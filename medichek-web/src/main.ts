@@ -440,7 +440,7 @@ async function submitAnalysis() {
 export function startAutoOcrScanning() {
     if (autoOcrInterval) return; // Already running
     
-    // Scan every 2 seconds
+    // Scan every second
     autoOcrInterval = setInterval(async () => {
         if (analysisSession.currentStep !== 1 || ocrRecognized || ocrSkipped) {
             stopAutoOcrScanning();
@@ -450,6 +450,8 @@ export function startAutoOcrScanning() {
         const res = await cam.performAutoOcrScan();
 
         if (res) {
+            stopAutoOcrScanning();
+            clearInterval(autoOcrInterval!);
             // Mark as recognized
             setOcrRecognized(true);
             currentOcrStatus = 'recognized';
@@ -458,9 +460,6 @@ export function startAutoOcrScanning() {
             DOM.ocrResultCompact.innerHTML = '';
             
             utils.addLog('✅ Product label recognized!', 'success');
-            
-            // Stop auto-scanning
-            stopAutoOcrScanning();
             
             // Update UI
             updateSessionUI();
@@ -500,18 +499,33 @@ export function setPalmSkipped(skipped: boolean) {
 
 export async function performOCR(canvas: any) {
     try {
-        const worker = await createWorker();
+        const worker = await createWorker('chi_sim');
         
         const { data: { text } } = await worker.recognize(canvas);
         await worker.terminate();
         
         utils.addLog(`📄 OCR Text: ${text.trim()}`, 'info');
         
-        // Check if "TEST" is in the recognized text (case-insensitive)
-        const recognizedText = text.toUpperCase();
-        const containsTest = recognizedText.includes('TEST');
+        // Check if at least 50% of the target Chinese characters are in the recognized text
+        const recognizedText = text;
+        const targetCharacters = [
+            '样', '品', '标', '识', '单',
+            '检', '编', '号',
+            '留',
+            '测',
+            '多', '余',
+            '未',
+            '在',
+            '毕'
+        ];
         
-        if (containsTest) {
+        // Count how many target characters are found in the recognized text
+        const foundCharacters = targetCharacters.filter(char => recognizedText.includes(char));
+        const matchPercentage = (foundCharacters.length / targetCharacters.length) * 100;
+        
+        utils.addLog(`🔍 Character match: ${foundCharacters.length}/${targetCharacters.length} (${matchPercentage.toFixed(1)}%)`, 'info');
+        
+        if (matchPercentage >= 50) {
             ocrRecognized = true;
             utils.addLog('✅ Product label recognized!', 'success');
             
@@ -613,6 +627,7 @@ DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 DOM.captureFrameBtn.addEventListener('click', async () => {
     if (analysisSession.currentStep == 1) {
         currentOcrStatus = 'analyzing';
+        stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
     } else if (analysisSession.currentStep == 2) {
         // Capture frame for step 2 (palm detection)
@@ -725,6 +740,8 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     DOM.captureFrameBtn.disabled = false;
     
     utils.addLog('Retry OCR - Capture a new frame', 'info');
+
+    startAutoOcrScanning
     
     // Update UI to allow recapture
     updateSessionUI();

@@ -15,9 +15,8 @@ export let currentPalmStatus: string = 'null'; // 'captured' or null
 
 // OCR capture area (centered square for product/text placement)
 export const OCR_CAPTURE_AREA = {
-    sizePercent: 0.4,   // 40% of canvas (square area for better OCR)
-    get widthPercent() { return this.sizePercent; },
-    get heightPercent() { return this.sizePercent; },
+    get widthPercent() { return 0.6; },
+    get heightPercent() { return 0.5; },
     get x() { return (1 - this.widthPercent) / 2; },  // Centered horizontally
     get y() { return (1 - this.heightPercent) / 2; }  // Centered vertically
 };
@@ -213,19 +212,19 @@ export async function captureFrame(stepNum: number) {
         // Hide countdown
         DOM.countdownOverlay.style.display = 'none';
             
-        // Calculate capture area dimensions (square based on smaller dimension)
-        const minDimension = Math.min(DOM.webcam.videoWidth, DOM.webcam.videoHeight);
-        const squareSize = minDimension * OCR_CAPTURE_AREA.sizePercent;
+        // Calculate capture area dimensions 
+        const paddingPercent = 0.40;
         
         // Add padding to capture more area around the OCR capture zone (20% padding)
-        const paddingPercent = 0.40;
-        const padding = squareSize * paddingPercent;
+        const width = DOM.webcam.videoWidth * OCR_CAPTURE_AREA.widthPercent;
+        const height = DOM.webcam.videoHeight * OCR_CAPTURE_AREA.heightPercent;
         
         // Center the square with padding
-        const captureX = Math.max(0, (DOM.webcam.videoWidth - squareSize) / 2 - padding);
-        const captureY = Math.max(0, (DOM.webcam.videoHeight - squareSize) / 2 - padding);
-        const captureWidth = Math.min(squareSize + (padding * 2), DOM.webcam.videoWidth - captureX);
-        const captureHeight = Math.min(squareSize + (padding * 2), DOM.webcam.videoHeight - captureY);
+        const captureX = Math.max(0, (DOM.webcam.videoWidth - width) / 2);
+        const captureY = Math.max(0, (DOM.webcam.videoHeight - height) / 2);
+        const captureWidth = Math.min(width, DOM.webcam.videoWidth - captureX) + width * paddingPercent;
+        const captureHeight = Math.min(height, DOM.webcam.videoHeight - captureY) + height * paddingPercent;
+
         
         // Capture the padded area (un-mirrored for OCR)
         const captureCanvas = document.createElement('canvas');
@@ -373,12 +372,10 @@ export async function performAutoOcrScan(): Promise<boolean> {
     if (!DOM.webcam) return false;
     
     // Calculate capture area dimensions
-    const minDimension = Math.min(DOM.webcam.videoWidth, DOM.webcam.videoHeight);
-    const squareSize = minDimension * OCR_CAPTURE_AREA.sizePercent;
-    const captureX = (DOM.webcam.videoWidth - squareSize) / 2;
-    const captureY = (DOM.webcam.videoHeight - squareSize) / 2;
-    const captureWidth = squareSize;
-    const captureHeight = squareSize;
+    const captureWidth = Math.max(DOM.webcam.videoWidth, DOM.webcam.videoHeight) * OCR_CAPTURE_AREA.widthPercent;
+    const captureHeight = Math.min(DOM.webcam.videoWidth, DOM.webcam.videoHeight) * OCR_CAPTURE_AREA.heightPercent;
+    const captureX = (DOM.webcam.videoWidth - captureWidth) / 2;
+    const captureY = (DOM.webcam.videoHeight - captureHeight) / 2;
     
     // Capture the OCR area silently (no countdown)
     const captureCanvas = document.createElement('canvas');
@@ -395,15 +392,28 @@ export async function performAutoOcrScan(): Promise<boolean> {
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await createWorker();
+        const worker = await createWorker('chi_sim');
         const { data: { text } } = await worker.recognize(captureCanvas);
         await worker.terminate();
         
-        // Check if "TEST" is in the recognized text
-        const recognizedText = text.toUpperCase();
-        const containsTest = recognizedText.includes('TEST');
+        // Check if at least 50% of the target Chinese characters are in the recognized text
+        const recognizedText = text;
+        const targetCharacters = [
+            '样', '品', '标', '识', '单',
+            '检', '编', '号',
+            '留',
+            '测',
+            '多', '余',
+            '未',
+            '在',
+            '毕'
+        ];
         
-        if (containsTest) {
+        // Count how many target characters are found in the recognized text
+        const foundCharacters = targetCharacters.filter(char => recognizedText.includes(char));
+        const matchPercentage = (foundCharacters.length / targetCharacters.length) * 100;
+        
+        if (matchPercentage >= 65) {
             // Store the captured frame
             await new Promise<void>(resolve => {
                 captureCanvas.toBlob(blob => {

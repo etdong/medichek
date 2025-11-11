@@ -778,14 +778,12 @@ export function drawOcrCaptureArea() {
     // Draw OCR capture area on Step 1 (OCR Capture - always, regardless of face detection)
     if (!canvasCtx) return;
     // Calculate square dimensions based on the smaller canvas dimension
-    const minDimension = Math.min(canvas.width, canvas.height);
-    const squareSize = minDimension * cam.OCR_CAPTURE_AREA.sizePercent;
+    const captureWidth = Math.max(canvas.width, canvas.height) * cam.OCR_CAPTURE_AREA.widthPercent;
+    const captureHeight = Math.min(canvas.width, canvas.height) * cam.OCR_CAPTURE_AREA.heightPercent;
     
     // Center the square
-    const captureX = (canvas.width - squareSize) / 2;
-    const captureY = (canvas.height - squareSize) / 2;
-    const captureWidth = squareSize;
-    const captureHeight = squareSize;
+    const captureX = (canvas.width - captureWidth) / 2;
+    const captureY = (canvas.height - captureHeight) / 2;
     
     // Draw semi-transparent overlay outside capture area (darker for better contrast)
     canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
