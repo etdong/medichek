@@ -412,7 +412,7 @@ export function downloadAllRecordings(analysisData: any) {
                     
                     // Show completion screen
                     const details = `
-                        <div>${t('completion.sessionId')}: ${analysisData.sessionId}</div>
+                        <div>${t('completion.sessionId')}: ${analysisData.session_id}</div>
                         <div>${t('completion.totalFiles')}: ${fileCount}</div>
                     `;
                     ui.showCompletionScreen(true, t('completion.downloadSuccess'), t('completion.downloadMessage'), details);

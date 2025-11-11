@@ -958,6 +958,21 @@ body {
 .modal-title {
     font-size: 1.3em;
     font-weight: 600;
+}
+
+.language-modal {
+    max-width: 400px;
+}
+
+.language-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.btn-large {
+    padding: 15px 30px;
+    font-size: 1.1em;
     color: #e0e0e0;
     margin: 0;
 }
@@ -1587,4 +1602,9 @@ body {
     .completion-message {
         font-size: 1em;
     }
+}
+
+/* Always show language modal above loading screen */
+#language-select-modal {
+    z-index: 3000 !important;
 }

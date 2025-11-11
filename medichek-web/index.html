@@ -25,7 +25,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous" type="module"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     
@@ -39,8 +39,8 @@
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1.24.min.js"></script>
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loading-screen" class="loading-screen">
+    <!-- Loading Screen (hidden initially, shown after language selection) -->
+    <div id="loading-screen" class="loading-screen" style="display: none;">
         <div class="loading-content">
             <div class="loading-spinner"></div>
             <h2 class="loading-title" data-i18n="loading.title">Initializing</h2>
@@ -67,8 +67,8 @@
     </div>
     
     <div class="container">
-        <!-- Language Selector -->
-        <div class="language-selector">
+        <!-- Language Selector (hidden by default, shown only if needed) -->
+        <div class="language-selector" style="display: none;">
             <button id="lang-en" class="lang-btn active" data-lang="en">English</button>
             <button id="lang-zh" class="lang-btn" data-lang="zh">简体中文</button>
         </div>
@@ -190,6 +190,26 @@
             </div>
         </div>
 
+        <!-- Language Selection Modal -->
+        <div id="language-select-modal" class="modal-overlay" style="display: flex;">
+            <div class="modal-content language-modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">Select Language / 选择语言</h3>
+                </div>
+                <div class="modal-body">
+                    <p style="text-align: center; margin-bottom: 20px;">Please select your preferred language<br>请选择您的首选语言</p>
+                    <div class="language-options">
+                        <button id="select-lang-en" class="btn btn-primary btn-large" style="width: 100%; margin-bottom: 15px;">
+                            English
+                        </button>
+                        <button id="select-lang-zh" class="btn btn-primary btn-large" style="width: 100%;">
+                            简体中文
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- OCR Fail Modal -->
         <div id="ocr-fail-modal" class="modal-overlay" style="display: none;">
             <div class="modal-content">
@@ -248,7 +268,6 @@
                     <ul>
                         <li data-i18n="consent.privacy1">Videos will be saved securely</li>
                         <li data-i18n="consent.privacy2">Data is used only for analysis purposes</li>
-                        <li data-i18n="consent.privacy3">You can download your session data at the end</li>
                     </ul>
                     <p class="consent-note"><strong>Note:</strong> <span data-i18n="consent.note">Video recording is required to proceed with the tracking session.</span></p>
                 </div>

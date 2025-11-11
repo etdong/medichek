@@ -7,18 +7,10 @@ import * as mp from './mp_manager.js';
 
 import { FilesetResolver, FaceDetector, HandLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { Camera } from '@mediapipe/camera_utils';
-import { MedichekConfig } from './config';
 import { t, updateLanguage } from './translations';
 import { createWorker } from 'tesseract.js'
 
 //#region Declarations
-
-// Current server status (for re-translation when language changes)
-let currentServerStatus = 'checking'; // 'checking', 'online', or 'offline'
-let currentMinioStatus = 'checking';  // 'checking', 'online', or 'offline'
-
-// Current frame capture statuses (for re-translation when language changes)
-let currentOcrStatus = 'null'; // 'analyzing', 'recognized', 'notFound', 'error', 'review', or null
 
 // Global state - Client-side only, no server sessions
 let analysisSession = {
@@ -182,7 +174,7 @@ function createAnalysisData() {
                 forehead_seconds: mp.faceRubbingState.forehead.totalTime / 1000,
                 left_cheek_seconds: mp.faceRubbingState.leftSide.totalTime / 1000,
                 right_cheek_seconds: mp.faceRubbingState.rightSide.totalTime / 1000,
-                coverage: mp.faceRubbingState.totalCoverage,
+                coverage_percentage: mp.faceRubbingState.totalCoverage,
                 passed: mp.faceRubbingState.forehead.rubbed && mp.faceRubbingState.leftSide.rubbed && mp.faceRubbingState.rightSide.rubbed,
             },
         },
@@ -195,7 +187,7 @@ function createAnalysisData() {
 
 		assessment: {
 			completed: analysisSession.currentStep === analysisSession.totalSteps,
-			quality_score: 100,
+			quality_score: 0,
 			issues_detected: [],
 			recommendations: []
     	}
@@ -357,13 +349,6 @@ async function submitAnalysis() {
     
     // Upload to MinIO first if consent was given, to get the file URLs
     if (cam.recordingConsent) {
-		if (!MedichekConfig.minIO.enabled) {
-			utils.addLog('⚠️ MinIO upload is disabled, downloading locally instead', 'warning');
-			DOM.uploadOverlay.style.display = 'none';
-			server.downloadAllRecordings(analysisData);
-			ui.showCompletionScreen(false, 'Files downloaded locally', 'MinIO upload is disabled. Your files have been downloaded to your device.', '', true);
-			return;
-		}
         try {
             const res = await server.uploadToMinIO(analysisData);
             if (res && server.minioFileUrls) {
@@ -400,9 +385,9 @@ async function submitAnalysis() {
             true, 
             t('completion.uploadSuccess'), 
             t('completion.uploadMessage'),
-            `<p><strong>${t('completion.sessionId')}:</strong> ${analysisSession.sessionId}</p>
+            `<p><strong>${t('completion.sessionId')}:</strong> ${analysisData.session_id}</p>
              <p><strong>${t('completion.date')}:</strong> ${new Date().toLocaleString()}</p>`,
-            false
+            true
         );
     } else if (!minioUploadSuccess && !analysisUploadSuccess) {
         // Both failed - show download button
@@ -455,7 +440,6 @@ export function startAutoOcrScanning() {
             clearInterval(autoOcrInterval!);
             // Mark as recognized
             setOcrRecognized(true);
-            currentOcrStatus = 'recognized';
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';
@@ -532,7 +516,6 @@ export async function performOCR(canvas: any) {
             utils.addLog('✅ Product label recognized!', 'success');
             
             // Update compact display - only show success status
-            currentOcrStatus = 'recognized';
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';  // No detailed message
@@ -553,7 +536,6 @@ export async function performOCR(canvas: any) {
             utils.addLog('❌ Product label not found in image. Try again.', 'error');
             
             // Update compact display - only show failed status
-            currentOcrStatus = 'notFound';
             DOM.ocrStatusBadge.textContent = t('frame.ocrNotFound');
             DOM.ocrStatusBadge.className = 'ocr-status failed';
             DOM.ocrResultCompact.innerHTML = '';  // No detailed message
@@ -569,7 +551,6 @@ export async function performOCR(canvas: any) {
         utils.addLog('❌ OCR failed: ' + err.message, 'error');
         
         // Update compact display - only show error status
-        currentOcrStatus = 'error';
         DOM.ocrStatusBadge.textContent = t('frame.ocrError');
         DOM.ocrStatusBadge.className = 'ocr-status failed';
         DOM.ocrResultCompact.innerHTML = '';  // No detailed error message
@@ -591,10 +572,24 @@ function restartSession() {
 //#region Event listeners
 
 addEventListener('load', () => {
-    // Initialize language
-    updateLanguage(localStorage.getItem('medichek-language') || 'en');
-    
-    // Initialize application
+    // Check if language is already set
+    // Show language selection modal and hide loading screen
+    DOM.languageSelectModal.style.display = 'flex';
+    DOM.loadingScreen.style.display = 'none';
+});
+
+// Event listeners for language selection modal
+DOM.selectLangEnBtn.addEventListener('click', () => {
+    updateLanguage('en');
+    DOM.languageSelectModal.style.display = 'none';
+    DOM.loadingScreen.style.display = 'flex';
+    initializeApplication();
+});
+
+DOM.selectLangZhBtn.addEventListener('click', () => {
+    updateLanguage('zh');
+    DOM.languageSelectModal.style.display = 'none';
+    DOM.loadingScreen.style.display = 'flex';
     initializeApplication();
 });
 
@@ -605,30 +600,10 @@ DOM.retryConnectionBtn.addEventListener('click', async () => {
     await initializeApplication();
 });
 
-// Language selector event listeners
-DOM.langEnBtn.addEventListener('click', () => {
-    updateLanguage('en');
-    // Re-translate dynamic content after language change
-    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
-    ui.updateServerStatus(currentServerStatus);
-    ui.updateFrameCaptureStatuses(currentOcrStatus, cam.currentPalmStatus);
-    updateSessionUI();
-});
-
-DOM.langZhBtn.addEventListener('click', () => {
-    updateLanguage('zh');
-    // Re-translate dynamic content after language change
-    ui.updateLoadingScreenStatuses(currentServerStatus, currentMinioStatus);
-    ui.updateServerStatus(currentServerStatus);
-    ui.updateFrameCaptureStatuses(currentOcrStatus, cam.currentPalmStatus);
-    updateSessionUI();
-});
-
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     if (analysisSession.currentStep == 1) {
-        currentOcrStatus = 'analyzing';
         stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
     } else if (analysisSession.currentStep == 2) {
@@ -794,7 +769,6 @@ DOM.continueAnywayBtn.addEventListener('click', () => {
     setOcrSkipped(true);
     
     // Update the status badge to show manual review
-    currentOcrStatus = 'review';
     DOM.ocrStatusBadge.textContent = t('frame.ocrReview');
     DOM.ocrStatusBadge.className = 'ocr-status warning';
 
@@ -867,31 +841,25 @@ DOM.downloadAnalysisBtn.addEventListener('click', async () => {
 // Initialize
 async function initializeApplication() {
 	// Check Server
-	currentServerStatus = 'Checking...';
 	DOM.serverCheckStatus.textContent = t('loading.checking');
 	DOM.serverCheckStatus.className = 'check-status checking';
-	currentMinioStatus = 'Checking...';
 	DOM.minioCheckStatus.textContent = t('loading.checking');
 	DOM.minioCheckStatus.className = 'check-status checking';
 
     const { serverOnline, minioOnline } = await server.checkServers();
 
 	if (serverOnline) {
-		currentServerStatus = 'Connected';
 		DOM.serverCheckStatus.textContent = t('loading.online');
 		DOM.serverCheckStatus.className = 'check-status online';
 	} else {
-		currentServerStatus = 'Disconnected';
 		DOM.serverCheckStatus.textContent = t('loading.offline');
 		DOM.serverCheckStatus.className = 'check-status offline';
 	}
 	
 	if (minioOnline) {
-		currentMinioStatus = 'Connected';
 		DOM.minioCheckStatus.textContent = t('loading.online');
 		DOM.minioCheckStatus.className = 'check-status online';
 	} else {
-		currentMinioStatus = 'Disconnected';
 		DOM.minioCheckStatus.textContent = t('loading.offline');
 		DOM.minioCheckStatus.className = 'check-status offline';
 	}
