@@ -1,7 +1,5 @@
 import * as DOM from './dom.js';
 import * as utils from './utils.js';
-import * as mp from './mp_manager.js';
-import * as ui from './ui_manager.js';
 import { t } from './translations.js';
 import { createWorker } from 'tesseract.js';
 
@@ -353,7 +351,9 @@ export async function performAutoOcrScan(): Promise<boolean> {
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await createWorker('chi_sim');
+        const worker = await createWorker();
+        await worker.loadLanguage('chi_sim');
+        await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(captureCanvas);
         await worker.terminate();
         

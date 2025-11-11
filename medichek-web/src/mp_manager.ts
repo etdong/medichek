@@ -4,8 +4,6 @@ import * as utils from './utils.js';
 import * as cam from './camera.js';
 
 import { t } from './translations.js';
-import { canvas } from './dom.js';
-import { addLog } from './utils.js';
 import { DrawingUtils } from '@mediapipe/tasks-vision';
 
 // Canvas context
@@ -88,9 +86,10 @@ export function onFaceMeshResults(results: any) {
         DOM.canvas.width = DOM.webcam.videoWidth;
         DOM.canvas.height = DOM.webcam.videoHeight;
         canvasCtx = DOM.canvas.getContext('2d');
-    } else {
-        // Always draw video frame to keep preview updating
-        canvasCtx.save();
+    }
+    
+    // Always draw video frame to keep preview updating
+    if (canvasCtx) {
         canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
         canvasCtx.drawImage(DOM.webcam, 0, 0, DOM.canvas.width, DOM.canvas.height);
     }
@@ -110,15 +109,8 @@ export function onFaceMeshResults(results: any) {
 
         // Draw overlay on canvas
         drawFaceMeshOverlay(faceMeshLandmarks);
-    } else {
-        // No face detected - still draw hand landmarks if available
-        faceMeshLandmarks = null;
-        if (handLandmarks && handLandmarks.length > 0) {
-            drawFaceMeshOverlay(null);
-        }
     }
     
-    canvasCtx!.restore();
 }
 
 // Check if face is within canvas bounds (for Step 3)
@@ -390,14 +382,14 @@ export function onStep2HandsDetectionResults(results: any) {
     // Always draw the canvas to keep preview updating
     // Initialize canvas context if needed
     if (!canvasCtx) {
-        canvas.width = DOM.webcam.videoWidth;
-        canvas.height = DOM.webcam.videoHeight;
-        canvasCtx = canvas.getContext('2d');
+        DOM.canvas.width = DOM.webcam.videoWidth;
+        DOM.canvas.height = DOM.webcam.videoHeight;
+        canvasCtx = DOM.canvas.getContext('2d');
     } else {
         // Always draw video frame to keep preview updating
         canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
+        canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, DOM.canvas.width, DOM.canvas.height);
         
         // Note: Hand landmarks drawing removed for better performance
         canvasCtx.restore();
@@ -526,7 +518,7 @@ export function onStep2HandsDetectionResults(results: any) {
                     
                     // Capture frame for step 2 (palm detection)
                     if (!handLandmarks || handLandmarks.length === 0) {
-                        addLog('⚠️ No hand detected for capture', 'warning');
+                        utils.addLog('⚠️ No hand detected for capture', 'warning');
                     } else {
                         cam.captureFrame(2);
                     }
@@ -564,21 +556,8 @@ export function onStep2HandsDetectionResults(results: any) {
 
 // Step 3: Hand Tracking for Face Rubbing (no palm detection)
 export function onStep3HandsDetectionResults(results: any) {
-    // Always draw the canvas to keep preview updating
-    // Initialize canvas context if needed
-    if (!canvasCtx) {
-        canvas.width = DOM.webcam.videoWidth;
-        canvas.height = DOM.webcam.videoHeight;
-        canvasCtx = canvas.getContext('2d');
-    } else {
-        // Always draw video frame to keep preview updating
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
-        
-        // Note: Hand landmarks drawing removed for better performance
-        canvasCtx.restore();
-    }
+    // Don't draw to canvas here - let onFaceMeshResults handle all drawing for step 3
+    // Just store the hand landmarks for face rubbing detection
     
     if (results.landmarks && results.landmarks.length > 0) {
         // Store all detected hands for face rubbing (supports multiple hands)
@@ -609,35 +588,42 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
     const chin = faceLandmarks[152];        // Chin
     
     // Calculate face dimensions
-    const faceWidth = Math.abs(leftTemple.x - rightTemple.x) * canvas.width;
-    const faceHeight = (chin.y - foreheadTop.y) * canvas.height;
+    const faceWidth = Math.abs(leftTemple.x - rightTemple.x) * DOM.canvas.width;
+    const faceHeight = (chin.y - foreheadTop.y) * DOM.canvas.height;
     
     // Define landmarks to exclude (lips, eyes, nose) from visualization
     const excludedLandmarks = new Set([
         // Lips
-        0, 13, 14, 17, 37, 39, 40, 61, 78, 80, 81, 82, 84, 87, 88, 91, 95, 146, 178, 181, 185, 191, 267, 269, 270, 291, 308, 310, 311, 312, 314, 317, 318, 321, 324, 375, 402, 405, 409, 415,
+        0, 11, 12, 13, 14, 15, 16, 17, 37, 72, 38, 82, 87, 86, 85, 84, 39, 73, 41, 81, 178, 179, 180, 181, 40, 
+        74, 42, 80, 88, 89, 90, 91, 185, 184, 183, 191, 95, 96, 77, 146, 61, 76, 62, 78, 267, 302, 268, 312, 
+        317, 316, 315, 314, 269, 303, 271, 311, 402, 403, 404, 405, 270, 304, 272, 310, 318, 319, 320, 321, 409, 408, 407, 415,
+        324, 325, 307, 375, 291, 206, 292, 308,
         // Left Eye
-        249, 263, 362, 373, 374, 380, 381, 382, 384, 385, 386, 387, 388, 390, 398, 466,
+        130, 247, 30, 29, 27, 28, 56, 190, 243, 112, 26, 22, 23, 24, 110, 25,
+        33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7,
+
         // Right Eye
-        7, 33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173, 246,
-        // Left Iris
-        474, 475, 476, 477,
-        // Right Iris
-        469, 470, 471, 472,
+        359, 467, 260, 259, 257, 258, 286, 414, 463, 341, 256, 252, 253, 254, 339, 255,
+        263, 466, 388, 387, 386, 385, 384, 398, 362, 380, 381, 382, 374, 373, 390, 249,
+
         // Nose
-        1, 2, 4, 5, 6, 19, 44, 45, 48, 64, 94, 97, 98, 115, 168, 195, 197, 220, 275, 278, 294, 326, 327, 344, 440
+        19, 94, 2, 125, 141, 241, 242, 97, 238, 20, 99, 79, 60, 219, 218, 239, 166, 59, 75, 235, 240, 64, 98,
+        354, 370, 326, 461, 462, 326, 459, 458, 250, 328, 438, 309, 290, 439, 392, 289, 305, 455, 294, 327, 460,
+
+        // Irises
+        468, 469, 470, 471, 472, 473, 474, 475, 476, 477
     ]);
     
-    // Draw face mesh landmarks manually (DrawingUtils doesn't work well with face landmarks)
-    // Draw uncovered landmarks in gray
+    // Draw face mesh landmarks manually
+    // Draw uncovered landmarks in gray with higher opacity
     for (let i = 0; i < faceLandmarks.length; i++) {
         if (excludedLandmarks.has(i)) continue;
         
         const landmark = faceLandmarks[i];
-        const x = landmark.x * canvas.width;
-        const y = landmark.y * canvas.height;
+        const x = landmark.x * DOM.canvas.width;
+        const y = landmark.y * DOM.canvas.height;
         
-        canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.15)';
+        canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.25)';
         canvasCtx.beginPath();
         canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
         canvasCtx.fill();
@@ -648,17 +634,17 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
         if (idx >= faceLandmarks.length || excludedLandmarks.has(idx)) continue;
         
         const landmark = faceLandmarks[idx];
-        const x = landmark.x * canvas.width;
-        const y = landmark.y * canvas.height;
+        const x = landmark.x * DOM.canvas.width;
+        const y = landmark.y * DOM.canvas.height;
         
         canvasCtx.fillStyle = 'rgba(0, 255, 100, 0.25)';
         canvasCtx.beginPath();
-        canvasCtx.arc(x, y, 2.5, 0, 2 * Math.PI);
+        canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
         canvasCtx.fill();
     }
     
     // Draw elliptical rubbing time tracking zones
-    const yOffset = 0.05; // Shift detection areas down by 5%
+    const yOffset = 0; // Shift detection areas down by 5%
     
     // Forehead ellipse (horizontal orientation, shifted down, wider to match increased detection threshold)
     const foreheadCenter = faceLandmarks[10];
@@ -674,7 +660,7 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
     canvasCtx.stroke();
     
     // Left cheek ellipse (vertical orientation, shifted down)
-    const leftCheek = faceLandmarks[280];
+    const leftCheek = faceLandmarks[411];
     const leftX = leftCheek.x * DOM.canvas.width;
     const leftY = (leftCheek.y + yOffset) * DOM.canvas.height;
     const leftRadiusX = faceWidth * 0.15;
@@ -686,7 +672,7 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
     canvasCtx.stroke();
     
     // Right cheek ellipse (vertical orientation, shifted down)
-    const rightCheek = faceLandmarks[50];
+    const rightCheek = faceLandmarks[187];
     const rightX = rightCheek.x * DOM.canvas.width;
     const rightY = (rightCheek.y + yOffset) * DOM.canvas.height;
     const rightRadiusX = faceWidth * 0.15;
@@ -702,13 +688,13 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
 export function onFaceDetectionResults(results: any) {
     // Get canvas context
     if (!canvasCtx) {
-        canvas.width = DOM.webcam.videoWidth;
-        canvas.height = DOM.webcam.videoHeight;
-        canvasCtx = canvas.getContext('2d');
+        DOM.canvas.width = DOM.webcam.videoWidth;
+        DOM.canvas.height = DOM.webcam.videoHeight;
+        canvasCtx = DOM.canvas.getContext('2d');
     } else {
         canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
+        canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, DOM.canvas.width, DOM.canvas.height);
     
         if (results.detections && results.detections.length > 0) {
             // Get first detected face
@@ -717,8 +703,8 @@ export function onFaceDetectionResults(results: any) {
             
             // tasks-vision uses different bounding box format: {originX, originY, width, height}
             // Calculate center position (normalized 0-1)
-            const centerX = (bbox.originX + bbox.width / 2) / canvas.width;
-            const centerY = (bbox.originY + bbox.height / 2) / canvas.height;
+            const centerX = (bbox.originX + bbox.width / 2) / DOM.canvas.width;
+            const centerY = (bbox.originY + bbox.height / 2) / DOM.canvas.height;
             
             facePosition.x = centerX;
             facePosition.y = centerY;
@@ -757,8 +743,8 @@ export function drawFaceBoundingBox(results: any) {
         }
         
         // Draw center indicator (guidance overlay)
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        const centerX = DOM.canvas.width / 2;
+        const centerY = DOM.canvas.height / 2;
         const targetRadius = 100;
         
         // Draw target circle
@@ -782,23 +768,23 @@ export function drawOcrCaptureArea() {
     // Draw OCR capture area on Step 1 (OCR Capture - always, regardless of face detection)
     if (!canvasCtx) return;
     // Calculate square dimensions based on the smaller canvas dimension
-    const captureWidth = Math.max(canvas.width, canvas.height) * cam.OCR_CAPTURE_AREA.widthPercent;
-    const captureHeight = Math.min(canvas.width, canvas.height) * cam.OCR_CAPTURE_AREA.heightPercent;
+    const captureWidth = Math.max(DOM.canvas.width, DOM.canvas.height) * cam.OCR_CAPTURE_AREA.widthPercent;
+    const captureHeight = Math.min(DOM.canvas.width, DOM.canvas.height) * cam.OCR_CAPTURE_AREA.heightPercent;
     
     // Center the square
-    const captureX = (canvas.width - captureWidth) / 2;
-    const captureY = (canvas.height - captureHeight) / 2;
+    const captureX = (DOM.canvas.width - captureWidth) / 2;
+    const captureY = (DOM.canvas.height - captureHeight) / 2;
     
     // Draw semi-transparent overlay outside capture area (darker for better contrast)
     canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
     // Top bar
-    canvasCtx.fillRect(0, 0, canvas.width, captureY);
+    canvasCtx.fillRect(0, 0, DOM.canvas.width, captureY);
     // Bottom bar
-    canvasCtx.fillRect(0, captureY + captureHeight, canvas.width, canvas.height - captureY - captureHeight);
+    canvasCtx.fillRect(0, captureY + captureHeight, DOM.canvas.width, DOM.canvas.height - captureY - captureHeight);
     // Left bar
     canvasCtx.fillRect(0, captureY, captureX, captureHeight);
     // Right bar
-    canvasCtx.fillRect(captureX + captureWidth, captureY, canvas.width - captureX - captureWidth, captureHeight);
+    canvasCtx.fillRect(captureX + captureWidth, captureY, DOM.canvas.width - captureX - captureWidth, captureHeight);
     
     // Draw animated border around capture area
     const animationTime = Date.now() % 2000; // 2 second cycle
@@ -853,7 +839,7 @@ export function drawOcrCaptureArea() {
     canvasCtx.font = 'bold 22px Arial';
     canvasCtx.textAlign = 'center';
     const textMetrics = canvasCtx.measureText(instructionText);
-    const textX = canvas.width / 2;
+    const textX = DOM.canvas.width / 2;
     const textY = captureY - 20;
     const padding = 10;
     
@@ -891,7 +877,7 @@ export function drawOcrCaptureArea() {
     
     // Add dimension markers (also flip this text)
     canvasCtx.save();
-    canvasCtx.translate(canvas.width / 2, captureY + captureHeight + 25);
+    canvasCtx.translate(DOM.canvas.width / 2, captureY + captureHeight + 25);
     canvasCtx.scale(-1, 1);
     canvasCtx.fillStyle = 'rgba(0, 255, 0, 0.6)';
     canvasCtx.font = 'bold 14px Arial';

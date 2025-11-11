@@ -51,6 +51,10 @@ let faceLandmarker: FaceLandmarker | null = null;
 // Automatic OCR scanning
 let autoOcrInterval: NodeJS.Timeout | null = null;
 
+const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+);
+
 //#endregion
 
 export function updateSessionUI() {
@@ -90,7 +94,6 @@ export function updateSessionUI() {
     } else if (analysisSession.currentStep === 1) {
         // Step 1: OCR capture with auto-scanning
         DOM.captureFrameBtn.style.display = 'block';
-        DOM.captureFrameBtn.disabled = !cameraEnabled;
         
         if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
         if (stepProgress) {
@@ -105,7 +108,6 @@ export function updateSessionUI() {
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         DOM.captureFrameBtn.style.display = 'block';
-        DOM.captureFrameBtn.disabled = !cameraEnabled;
         if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
         if (stepProgress) {
             if (mp.palmDetectionState.completed) {
@@ -284,6 +286,7 @@ function nextStep() {
     
     // Reset step-specific states when entering a new step
     if (analysisSession.currentStep === 2) {
+        DOM.captureFrameBtn.disabled = false;
         // Reset palm detection state when entering step 2 (palm detection)
         mp.palmDetectionState.detected = false;
         mp.palmDetectionState.startTime = 0;
@@ -497,8 +500,9 @@ export function setPalmSkipped(skipped: boolean) {
 
 export async function performOCR(canvas: any) {
     try {
-        const worker = await createWorker('chi_sim');
-        
+        const worker = await createWorker();
+        await worker.loadLanguage('chi_sim');
+        await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(canvas);
         await worker.terminate();
         
@@ -906,10 +910,6 @@ async function initializeApplication() {
 // Initialize MediaPipe Face Detection
 async function initializeFaceDetection() {
     utils.addLog('🤖 Initializing MediaPipe Face Detection...', 'info');
-
-    const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
     
     faceDetector = await FaceDetector.createFromOptions(vision, {
         baseOptions: {
@@ -926,10 +926,6 @@ async function initializeFaceDetection() {
 // Initialize MediaPipe Hands
 async function initializeHandsDetection() {
     utils.addLog('🤖 Initializing MediaPipe Hands Detection...', 'info');
-    
-    const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
@@ -949,10 +945,6 @@ async function initializeHandsDetection() {
 // Initialize MediaPipe Face Mesh (for Step 3)
 async function initializeFaceMesh() {
     utils.addLog('🤖 Initializing MediaPipe Face Mesh...', 'info');
-    
-    const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
     
     faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
