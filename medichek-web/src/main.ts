@@ -8,7 +8,7 @@ import * as mp from './mp_manager.js';
 import { FilesetResolver, FaceDetector, HandLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { Camera } from '@mediapipe/camera_utils';
 import { t, updateLanguage } from './translations';
-import { createWorker } from 'tesseract.js'
+import Tesseract from 'tesseract.js';
 
 //#region Declarations
 
@@ -454,7 +454,7 @@ export function startAutoOcrScanning() {
                 nextStep();
             }, 1500);
         }
-    }, 1000);
+    }, 500);
     
     utils.addLog('🔍 Auto-scanning for product label...', 'info');
 }
@@ -484,7 +484,7 @@ export function setPalmSkipped(skipped: boolean) {
 
 export async function performOCR(canvas: any) {
     try {
-        const worker = await createWorker();
+        const worker = await Tesseract.createWorker();
         await worker.loadLanguage('chi_sim');
         await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(canvas);
@@ -603,6 +603,7 @@ DOM.retryConnectionBtn.addEventListener('click', async () => {
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
+    DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks
     if (analysisSession.currentStep == 1) {
         stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
@@ -746,7 +747,6 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     DOM.ocrFailModal.style.display = 'none';
     
     // Reset the captured frame state to allow new capture
-    cam.resetCapturedFrame();
     setOcrRecognized(false);
     setOcrSkipped(false);
     
@@ -755,7 +755,7 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     
     utils.addLog('Retry OCR - Capture a new frame', 'info');
 
-    startAutoOcrScanning
+    startAutoOcrScanning()
     
     // Update UI to allow recapture
     updateSessionUI();
@@ -784,7 +784,6 @@ DOM.retryPalmBtn.addEventListener('click', () => {
     DOM.palmFailModal.style.display = 'none';
     
     // Reset the captured frame state to allow new capture
-    cam.resetCapturedFrame();
     setPalmSkipped(false);
     
     // Re-enable capture button for retry

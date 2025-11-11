@@ -1,7 +1,7 @@
 import * as DOM from './dom.js';
 import * as utils from './utils.js';
 import { t } from './translations.js';
-import { createWorker } from 'tesseract.js';
+import Tesseract from 'tesseract.js';
 
 let videoStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
@@ -322,11 +322,6 @@ export async function captureFrame(stepNum: number) {
     }
 }
 
-export function resetCapturedFrame() {
-    step1CapturedFrameBlob = null;
-    DOM.capturedFrameArea.classList.add('empty');
-}
-
 export async function performAutoOcrScan(): Promise<boolean> {
     if (!DOM.webcam) return false;
     
@@ -351,7 +346,7 @@ export async function performAutoOcrScan(): Promise<boolean> {
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await createWorker();
+        const worker = await Tesseract.createWorker();
         await worker.loadLanguage('chi_sim');
         await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(captureCanvas);
