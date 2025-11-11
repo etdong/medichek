@@ -6,6 +6,7 @@ import * as cam from './camera.js';
 import { t } from './translations.js';
 import { canvas } from './dom.js';
 import { addLog } from './utils.js';
+import { DrawingUtils } from '@mediapipe/tasks-vision';
 
 // Canvas context
 let canvasCtx: CanvasRenderingContext2D | null = null;
@@ -80,7 +81,7 @@ export const PALM_DETECTION_REQUIRED = 1000; // 1 second in milliseconds
 export const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
 
 
-// Face Mesh results callback
+// Face Mesh results callback (tasks-vision API)
 export function onFaceMeshResults(results: any) {
     // Initialize canvas context if needed
     if (!canvasCtx) {
@@ -91,12 +92,13 @@ export function onFaceMeshResults(results: any) {
         // Always draw video frame to keep preview updating
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, DOM.canvas.width, DOM.canvas.height);
-        canvasCtx.drawImage(results.image, 0, 0, DOM.canvas.width, DOM.canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, DOM.canvas.width, DOM.canvas.height);
     }
     
     // Process face landmarks if detected
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-        faceMeshLandmarks = results.multiFaceLandmarks[0];
+    // tasks-vision format uses 'faceLandmarks' instead of 'multiFaceLandmarks'
+    if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+        faceMeshLandmarks = results.faceLandmarks[0];
         
         // Check if face is within canvas bounds
         checkFaceInBounds(faceMeshLandmarks);
@@ -395,22 +397,23 @@ export function onStep2HandsDetectionResults(results: any) {
         // Always draw video frame to keep preview updating
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
         
         // Note: Hand landmarks drawing removed for better performance
         canvasCtx.restore();
     }
     
-    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        // Store first detected hand for palm detection
-        handLandmarks = results.multiHandLandmarks;
+    if (results.landmarks && results.landmarks.length > 0) {
+        // Store detected hands for palm detection (tasks-vision format)
+        handLandmarks = results.landmarks;
         
         // For palm detection step (step 2), only check the first hand
-        const firstHand = results.multiHandLandmarks[0];
+        const firstHand = results.landmarks[0];
         
         // Get handedness (Left or Right) for first hand
-        const handedness = results.multiHandedness && results.multiHandedness[0] 
-            ? results.multiHandedness[0].label 
+        // tasks-vision format: results.handednesses is array of arrays with {categoryName, score}
+        const handedness = results.handednesses && results.handednesses[0] && results.handednesses[0][0]
+            ? results.handednesses[0][0].categoryName 
             : null;
         
         // Check if palm is facing camera with fingers pointing down (first hand only for step 2)
@@ -435,17 +438,18 @@ export function onStep2HandsDetectionResults(results: any) {
         const fingersDown = [middleFingerDown, indexFingerDown, pinkyFingerDown, ringFingerDown].filter(x => x).length >= 3;
         
         // Check if palm is facing camera (not back of hand)
-        // NOTE: Camera feed is mirrored, so handedness is flipped from user's perspective
+        // NOTE: tasks-vision reports handedness in world coordinates (not mirrored)
+        // BUT the camera feed IS mirrored, so the thumb position check needs to account for that
         // When palm faces camera (in mirrored view):
-        // - MediaPipe "Right" hand (user's LEFT hand): thumb should be on the RIGHT side (thumb.x > pinky.x)
-        // - MediaPipe "Left" hand (user's RIGHT hand): thumb should be on the LEFT side (thumb.x < pinky.x)
+        // - "Left" hand (user's actual left): thumb appears on RIGHT side in mirror (thumb.x > pinky.x)
+        // - "Right" hand (user's actual right): thumb appears on LEFT side in mirror (thumb.x < pinky.x)
         let palmFacing = false;
         
-        if (handedness === 'Right') {
-            // MediaPipe "Right" = user's left hand; palm faces camera when thumb is to the right of pinky
+        if (handedness === 'Left') {
+            // Left hand in world coordinates; palm faces camera when thumb is to the right of pinky (in mirror)
             palmFacing = thumbTip.x > pinkyBase.x;
-        } else if (handedness === 'Left') {
-            // MediaPipe "Left" = user's right hand; palm faces camera when thumb is to the left of pinky
+        } else if (handedness === 'Right') {
+            // Right hand in world coordinates; palm faces camera when thumb is to the left of pinky (in mirror)
             palmFacing = thumbTip.x < pinkyBase.x;
         } else {
             // If handedness detection fails, use a heuristic
@@ -570,15 +574,16 @@ export function onStep3HandsDetectionResults(results: any) {
         // Always draw video frame to keep preview updating
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
         
         // Note: Hand landmarks drawing removed for better performance
         canvasCtx.restore();
     }
     
-    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    if (results.landmarks && results.landmarks.length > 0) {
         // Store all detected hands for face rubbing (supports multiple hands)
-        handLandmarks = results.multiHandLandmarks;
+        // tasks-vision format uses 'landmarks' instead of 'multiHandLandmarks'
+        handLandmarks = results.landmarks;
     } else {
         handLandmarks = [];  // Empty array when no hands detected
     }
@@ -594,8 +599,8 @@ export function onHandsDetectionResults(results: any, currentStep: number) {
 }
 
 // Draw face mesh landmarks and rubbing zones on canvas (Step 3)
-export function drawFaceMeshOverlay(faceLandmarks: string | any[] | null) {
-    if (!canvasCtx || !faceLandmarks) return;
+export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
+    if (!canvasCtx || !faceLandmarks || !Array.isArray(faceLandmarks)) return;
     
     // Get key facial landmarks for positioning
     const foreheadTop = faceLandmarks[10];  // Top of forehead
@@ -623,38 +628,33 @@ export function drawFaceMeshOverlay(faceLandmarks: string | any[] | null) {
         1, 2, 4, 5, 6, 19, 44, 45, 48, 64, 94, 97, 98, 115, 168, 195, 197, 220, 275, 278, 294, 326, 327, 344, 440
     ]);
     
-    // Draw all face mesh landmarks as gray dots (uncovered state), except excluded ones
-    canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.15)';
+    // Draw face mesh landmarks manually (DrawingUtils doesn't work well with face landmarks)
+    // Draw uncovered landmarks in gray
     for (let i = 0; i < faceLandmarks.length; i++) {
-        // Skip excluded landmarks
-        if (excludedLandmarks.has(i)) {
-            continue;
-        }
+        if (excludedLandmarks.has(i)) continue;
         
         const landmark = faceLandmarks[i];
+        const x = landmark.x * canvas.width;
+        const y = landmark.y * canvas.height;
+        
+        canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.15)';
         canvasCtx.beginPath();
-        canvasCtx.arc(
-            landmark.x * canvas.width,
-            landmark.y * canvas.height,
-            2, 0, 2 * Math.PI
-        );
+        canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
         canvasCtx.fill();
     }
     
-    // Draw covered landmarks on top with bright color, except excluded ones
-    canvasCtx.fillStyle = 'rgba(0, 255, 100, 0.25)';
-    for (const landmarkIdx of faceRubbingState.coveredLandmarks) {
-        // Skip excluded landmarks
-        if (landmarkIdx < faceLandmarks.length && !excludedLandmarks.has(landmarkIdx)) {
-            const landmark = faceLandmarks[landmarkIdx];
-            canvasCtx.beginPath();
-            canvasCtx.arc(
-                landmark.x * canvas.width,
-                landmark.y * canvas.height,
-                2.5, 0, 2 * Math.PI
-            );
-            canvasCtx.fill();
-        }
+    // Draw covered landmarks on top with bright color
+    for (const idx of faceRubbingState.coveredLandmarks) {
+        if (idx >= faceLandmarks.length || excludedLandmarks.has(idx)) continue;
+        
+        const landmark = faceLandmarks[idx];
+        const x = landmark.x * canvas.width;
+        const y = landmark.y * canvas.height;
+        
+        canvasCtx.fillStyle = 'rgba(0, 255, 100, 0.25)';
+        canvasCtx.beginPath();
+        canvasCtx.arc(x, y, 2.5, 0, 2 * Math.PI);
+        canvasCtx.fill();
     }
     
     // Draw elliptical rubbing time tracking zones
@@ -698,9 +698,8 @@ export function drawFaceMeshOverlay(faceLandmarks: string | any[] | null) {
     canvasCtx.stroke();
 }
 
-// Face detection results callback
+// Face detection results callback (tasks-vision API)
 export function onFaceDetectionResults(results: any) {
-    // Skip drawing on Step 3 (face rubbing - face mesh handles it)
     // Get canvas context
     if (!canvasCtx) {
         canvas.width = DOM.webcam.videoWidth;
@@ -709,21 +708,25 @@ export function onFaceDetectionResults(results: any) {
     } else {
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+        canvasCtx.drawImage(DOM.webcam, 0, 0, canvas.width, canvas.height);
     
         if (results.detections && results.detections.length > 0) {
             // Get first detected face
             const detection = results.detections[0];
             const bbox = detection.boundingBox;
             
-            // Calculate face center position (normalized 0-1)
-            facePosition.x = bbox.xCenter;
-            facePosition.y = bbox.yCenter;
+            // tasks-vision uses different bounding box format: {originX, originY, width, height}
+            // Calculate center position (normalized 0-1)
+            const centerX = (bbox.originX + bbox.width / 2) / canvas.width;
+            const centerY = (bbox.originY + bbox.height / 2) / canvas.height;
+            
+            facePosition.x = centerX;
+            facePosition.y = centerY;
             
             // Check if face is centered (within tolerance)
             const centerTolerance = 0.15; // 15% from center
-            const distanceFromCenterX = Math.abs(facePosition.x - 0.5);
-            const distanceFromCenterY = Math.abs(facePosition.y - 0.5);
+            const distanceFromCenterX = Math.abs(centerX - 0.5);
+            const distanceFromCenterY = Math.abs(centerY - 0.5);
             
             faceCentered = distanceFromCenterX < centerTolerance && distanceFromCenterY < centerTolerance;
         } else {
@@ -731,28 +734,29 @@ export function onFaceDetectionResults(results: any) {
         }
         
         canvasCtx.restore();
-
     }
 }
 
 export function drawFaceBoundingBox(results: any) {
     if (!canvasCtx) return;
     // Draw visualizations on Step 0 (preliminaries) for face centering guidance
-    // Draw bounding box
+    
     if (results.detections && results.detections.length > 0) {
-        // Get first detected face
-        const detection = results.detections[0];
-        const bbox = detection.boundingBox;
-        canvasCtx.strokeStyle = faceCentered ? '#00ff00' : '#ff6b00';
-        canvasCtx.lineWidth = 4;
-        canvasCtx.strokeRect(
-            bbox.xCenter * canvas.width - (bbox.width * canvas.width) / 2,
-            bbox.yCenter * canvas.height - (bbox.height * canvas.height) / 2,
-            bbox.width * canvas.width,
-            bbox.height * canvas.height
-        );
+        // Initialize DrawingUtils
+        const drawingUtils = new DrawingUtils(canvasCtx);
         
-        // Draw center indicator
+        // Draw all face detections using MediaPipe drawing utilities
+        for (const detection of results.detections) {
+            // Draw bounding box with color based on face centering
+            const color = faceCentered ? '#00ff00' : '#ff6b00';
+            drawingUtils.drawBoundingBox(detection.boundingBox, { 
+                color: color,
+                lineWidth: 4,
+                fillColor: 'transparent'
+            });
+        }
+        
+        // Draw center indicator (guidance overlay)
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const targetRadius = 100;

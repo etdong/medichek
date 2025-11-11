@@ -5,9 +5,7 @@ import * as server from './server_manager.js';
 import * as ui from './ui_manager.js';
 import * as mp from './mp_manager.js';
 
-import { FaceMesh } from '@mediapipe/face_mesh';
-import { FaceDetection } from '@mediapipe/face_detection';
-import { Hands } from '@mediapipe/hands';
+import { FilesetResolver, FaceDetector, HandLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { Camera } from '@mediapipe/camera_utils';
 import { MedichekConfig } from './config';
 import { t, updateLanguage } from './translations';
@@ -46,9 +44,9 @@ let cameraEnabled = false;
 // MinIO uploaded file URLs (populated after upload)
 let minioFileUrls: Record<string, string> = {};
 
-let faceDetection: FaceDetection | null = null;
-let handsDetection: Hands | null = null;
-let faceMesh: FaceMesh | null = null;
+let faceDetector: FaceDetector | null = null;
+let handLandmarker: HandLandmarker | null = null;
+let faceLandmarker: FaceLandmarker | null = null;
 
 // Automatic OCR scanning
 let autoOcrInterval: NodeJS.Timeout | null = null;
@@ -670,38 +668,75 @@ DOM.acceptRecordingBtn.addEventListener('click', async () => {
 		if (cameraEnabled) {
 			utils.addLog('✅ Camera access granted', 'success');
 			// Initialize MediaPipe Face Detection
-			initializeFaceDetection();
+			await initializeFaceDetection();
 			
 			// Initialize MediaPipe Hands Detection
-			initializeHandsDetection();
+			await initializeHandsDetection();
 			
 			// Initialize MediaPipe Face Mesh (for Step 3)
-			initializeFaceMesh();
+			await initializeFaceMesh();
 			
 			// Start camera processing with MediaPipe
+			let lastVideoTime = -1;
 			await cam.setCameraInstance(new Camera(DOM.webcam, {
 				onFrame: async () => {
 					// Optimize by only running necessary models for current step
+					const currentTime = performance.now();
 					
 					// Step 0 (Preliminaries): Only need face detection
 					if (analysisSession.currentStep === 0) {
-						await faceDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && faceDetector) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = faceDetector.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							if (analysisSession.isActive && !mp.faceCentered) {
+								ui.showWarningToast(t('warning.centerFace'));
+							} else {
+								ui.hideWarningToast();
+							}
+							mp.onFaceDetectionResults(results);
+							mp.drawFaceBoundingBox(results);
+							updateSessionUI();
+						}
 					}
 					// Step 1 (OCR): Use face detection to keep camera feed updating and draw OCR overlay
 					else if (analysisSession.currentStep === 1) {
-						await faceDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && faceDetector) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = faceDetector.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results and draw OCR overlay
+							mp.onFaceDetectionResults(results);
+							mp.drawOcrCaptureArea();
+							updateSessionUI();
+						}
 					}
 					// Step 2 (Palm Detection): Only need hands detection (no face tracking needed)
 					else if (analysisSession.currentStep === 2) {
-						await handsDetection!.send({image: DOM.webcam});
+						if (DOM.webcam.currentTime !== lastVideoTime && handLandmarker) {
+							lastVideoTime = DOM.webcam.currentTime;
+							const results = handLandmarker.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							mp.onHandsDetectionResults(results, analysisSession.currentStep);
+							updateSessionUI();
+						}
 					}
 					// Step 3 (Face Rubbing): Need both models - run in parallel for better FPS
 					else if (analysisSession.currentStep === 3) {
-						// Run both models in parallel instead of sequentially
-						await Promise.all([
-							faceMesh!.send({image: DOM.webcam}),
-							handsDetection!.send({image: DOM.webcam})
-						]);
+						if (DOM.webcam.currentTime !== lastVideoTime && handLandmarker && faceLandmarker) {
+							lastVideoTime = DOM.webcam.currentTime;
+							
+							// Run both detections
+							const handResults = handLandmarker.detectForVideo(DOM.webcam, currentTime);
+							const faceResults = faceLandmarker.detectForVideo(DOM.webcam, currentTime);
+							
+							// Process results
+							mp.onFaceMeshResults(faceResults);
+							mp.onHandsDetectionResults(handResults, analysisSession.currentStep);
+							updateSessionUI();
+						}
 					}
 				},
 				width: 640,   // Reduced from 1280 for better FPS (processing resolution)
@@ -869,87 +904,68 @@ async function initializeApplication() {
 }
 
 // Initialize MediaPipe Face Detection
-function initializeFaceDetection() {
+async function initializeFaceDetection() {
     utils.addLog('🤖 Initializing MediaPipe Face Detection...', 'info');
+
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
     
-    faceDetection = new FaceDetection({
-        locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
-        }
-    });
-    
-    faceDetection.setOptions({
-        model: 'short',
+    faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
         minDetectionConfidence: 0.5
-    });
-    
-    faceDetection.onResults((results) => {
-        // Show warning toast if face is not centered (for steps that need it, but skip step 1 OCR)
-        if (analysisSession.currentStep > 0 && analysisSession.currentStep !== 1 && analysisSession.isActive && !mp.faceCentered) {
-            ui.showWarningToast(t('warning.centerFace'));
-        } else if (mp.faceCentered || analysisSession.currentStep === 1) {
-            ui.hideWarningToast();
-        }
-        mp.onFaceDetectionResults(results);
-        if (analysisSession.currentStep === 0) {
-            mp.drawFaceBoundingBox(results);
-        }
-        if (analysisSession.currentStep === 1) {
-            mp.drawOcrCaptureArea();
-        }
-        updateSessionUI();
     });
     
     utils.addLog('✅ Face detection initialized', 'success');
 }
 
 // Initialize MediaPipe Hands
-function initializeHandsDetection() {
+async function initializeHandsDetection() {
     utils.addLog('🤖 Initializing MediaPipe Hands Detection...', 'info');
     
-    handsDetection = new Hands({
-        locateFile: (file: any) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }
-    });
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
     
-    handsDetection.setOptions({
-        maxNumHands: 2,  // Allow detection of up to 2 hands
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
-    });
-    
-    handsDetection.onResults((results) => {
-        if (analysisSession.currentStep !== 2 && analysisSession.currentStep !== 3) return;
-        mp.onHandsDetectionResults(results, analysisSession.currentStep);
-        updateSessionUI();
     });
     
     utils.addLog('✅ Hands detection initialized', 'success');
 }
 
 // Initialize MediaPipe Face Mesh (for Step 3)
-function initializeFaceMesh() {
+async function initializeFaceMesh() {
     utils.addLog('🤖 Initializing MediaPipe Face Mesh...', 'info');
     
-    faceMesh = new FaceMesh({
-        locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-        }
-    });
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
     
-    faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: false,  // Disable for better performance (we don't need iris/lips detail)
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-    
-    faceMesh.onResults((results) => {
-        if (analysisSession.currentStep !== 3) return;
-        mp.onFaceMeshResults(results);
-        updateSessionUI();
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+        minFaceDetectionConfidence: 0.5,
+        minFacePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false
     });
     
     utils.addLog('✅ Face mesh initialized', 'success');
