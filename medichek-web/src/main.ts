@@ -11,7 +11,7 @@ import { Hands } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 import { MedichekConfig } from './config';
 import { t, updateLanguage } from './translations';
-import { createWorker } from 'tesseract.js'
+import Tesseract from 'tesseract.js';
 
 //#region Declarations
 
@@ -92,7 +92,6 @@ export function updateSessionUI() {
     } else if (analysisSession.currentStep === 1) {
         // Step 1: OCR capture with auto-scanning
         DOM.captureFrameBtn.style.display = 'block';
-        DOM.captureFrameBtn.disabled = !cameraEnabled;
         
         if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
         if (stepProgress) {
@@ -107,7 +106,6 @@ export function updateSessionUI() {
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         DOM.captureFrameBtn.style.display = 'block';
-        DOM.captureFrameBtn.disabled = !cameraEnabled;
         if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
         if (stepProgress) {
             if (mp.palmDetectionState.completed) {
@@ -286,6 +284,7 @@ function nextStep() {
     
     // Reset step-specific states when entering a new step
     if (analysisSession.currentStep === 2) {
+        DOM.captureFrameBtn.disabled = false;
         // Reset palm detection state when entering step 2 (palm detection)
         mp.palmDetectionState.detected = false;
         mp.palmDetectionState.startTime = 0;
@@ -469,7 +468,7 @@ export function startAutoOcrScanning() {
                 nextStep();
             }, 1500);
         }
-    }, 1000);
+    }, 500);
     
     utils.addLog('🔍 Auto-scanning for product label...', 'info');
 }
@@ -499,8 +498,9 @@ export function setPalmSkipped(skipped: boolean) {
 
 export async function performOCR(canvas: any) {
     try {
-        const worker = await createWorker('chi_sim');
-        
+        const worker = await Tesseract.createWorker();
+        await worker.loadLanguage('chi_sim');
+        await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(canvas);
         await worker.terminate();
         
@@ -625,6 +625,7 @@ DOM.langZhBtn.addEventListener('click', () => {
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
+    DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks
     if (analysisSession.currentStep == 1) {
         currentOcrStatus = 'analyzing';
         stopAutoOcrScanning();
@@ -732,7 +733,6 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     DOM.ocrFailModal.style.display = 'none';
     
     // Reset the captured frame state to allow new capture
-    cam.resetCapturedFrame();
     setOcrRecognized(false);
     setOcrSkipped(false);
     
@@ -741,7 +741,7 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     
     utils.addLog('Retry OCR - Capture a new frame', 'info');
 
-    startAutoOcrScanning
+    startAutoOcrScanning()
     
     // Update UI to allow recapture
     updateSessionUI();
@@ -771,7 +771,6 @@ DOM.retryPalmBtn.addEventListener('click', () => {
     DOM.palmFailModal.style.display = 'none';
     
     // Reset the captured frame state to allow new capture
-    cam.resetCapturedFrame();
     setPalmSkipped(false);
     
     // Re-enable capture button for retry

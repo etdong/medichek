@@ -24,6 +24,6 @@
 		"@mediapipe/hands": "^0.4.1675469240",
 		"aws-sdk": "^2.1692.0",
 		"jszip": "^3.10.1",
-		"tesseract.js": "^6.0.1"
+		"tesseract.js": "^4.1.4"
 	}
 }

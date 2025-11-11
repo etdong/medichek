@@ -1,9 +1,7 @@
 import * as DOM from './dom.js';
 import * as utils from './utils.js';
-import * as mp from './mp_manager.js';
-import * as ui from './ui_manager.js';
 import { t } from './translations.js';
-import { createWorker } from 'tesseract.js';
+import Tesseract from 'tesseract.js';
 
 let videoStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
@@ -275,51 +273,12 @@ export async function captureFrame(stepNum: number) {
     }
 
     if (stepNum == 2) {
-        utils.addLog('📸 Capturing palm area...', 'info');
+        utils.addLog('📸 Capturing full frame for palm area...', 'info');
         
-        // Use the first detected hand for capture
-        if (!mp.handLandmarks || mp.handLandmarks.length === 0) {
-            ui.showWarningToast(t('frame.palmNoHandDetected'));
-            utils.addLog('❌ No hand detected for palm capture', 'error');
-            return;
-        }
-
-        const firstHand = mp.handLandmarks[0];
-
-        // Calculate bounding box around hand landmarks
-        let minX = 1, minY = 1, maxX = 0, maxY = 0;
-        
-        for (const landmark of firstHand) {
-            minX = Math.min(minX, landmark.x);
-            minY = Math.min(minY, landmark.y);
-            maxX = Math.max(maxX, landmark.x);
-            maxY = Math.max(maxY, landmark.y);
-        }
-        
-        // Add padding around hand (35% on each side for more context)
-        const padding = 0.35;
-        const width = maxX - minX;
-        const height = maxY - minY;
-        
-        minX = Math.max(0, minX - width * padding);
-        minY = Math.max(0, minY - height * padding);
-        maxX = Math.min(1, maxX + width * padding);
-        maxY = Math.min(1, maxY + height * padding);
-        
-        // Convert normalized coordinates to pixel coordinates
-        const captureX = minX * DOM.webcam.videoWidth;
-        const captureY = minY * DOM.webcam.videoHeight;
-        const captureWidth = (maxX - minX) * DOM.webcam.videoWidth;
-        const captureHeight = (maxY - minY) * DOM.webcam.videoHeight;
-        
-        // Make capture square by using the larger dimension
-        const squareSize = Math.max(captureWidth, captureHeight);
-        
-        // Center the square around the hand
-        const squareCenterX = captureX + captureWidth / 2;
-        const squareCenterY = captureY + captureHeight / 2;
-        const squareX = squareCenterX - squareSize / 2;
-        const squareY = squareCenterY - squareSize / 2;
+        // Capture full webcam frame (no hand detection requirement)
+        const squareSize = Math.min(DOM.webcam.videoWidth, DOM.webcam.videoHeight);
+        const squareX = (DOM.webcam.videoWidth - squareSize) / 2;
+        const squareY = (DOM.webcam.videoHeight - squareSize) / 2;
         
         // Create canvas for capture (square)
         const captureCanvas = document.createElement('canvas');
@@ -363,11 +322,6 @@ export async function captureFrame(stepNum: number) {
     }
 }
 
-export function resetCapturedFrame() {
-    step1CapturedFrameBlob = null;
-    DOM.capturedFrameArea.classList.add('empty');
-}
-
 export async function performAutoOcrScan(): Promise<boolean> {
     if (!DOM.webcam) return false;
     
@@ -392,7 +346,9 @@ export async function performAutoOcrScan(): Promise<boolean> {
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await createWorker('chi_sim');
+        const worker = await Tesseract.createWorker();
+        await worker.loadLanguage('chi_sim');
+        await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(captureCanvas);
         await worker.terminate();
         
