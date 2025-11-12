@@ -5,7 +5,6 @@ import * as cam from './camera.js';
 import { t } from './translations.js';
 import JSZip from 'jszip';
 import { MedichekConfig } from './config.js';
-import * as AWS from 'aws-sdk';
 
 // Storage for MinIO file URLs (organized by step/file)
 type MinioFileEntry = {
@@ -41,29 +40,27 @@ async function checkServer(): Promise<boolean> {
     utils.addLog('Checking Server connection...');
     ui.updateServerStatus('Checking...');
     return new Promise(async (resolve) => {
-        console.log(MedichekConfig.getServerUrl());
-        resolve(true);
-        // try {
-        //     const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
-        //         method: 'GET',
-        //         mode: 'cors',
-        //     });
+        try {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
+                method: 'GET',
+                mode: 'cors',
+            });
             
-        //     if (!response.ok) {
-        //         throw new Error(`Server responded with status ${response.status}`);
-        //     }
+            if (!response.ok) {
+                throw new Error(`Server responded with status ${response.status}`);
+            }
             
-        //     const data = await response.json();
-        //     ui.updateServerStatus('Connected');
-        //     utils.addLog('✅ Server is online', 'success');
-        //     utils.updateResponse(data);
-        //     resolve(true);
-        // } catch (err: any) {
-        //     ui.updateServerStatus('Disconnected');
-        //     utils.addLog('⚠️ Server offline', 'warning');
-        //     utils.updateResponse({ error: err.message });
-        //     resolve(false);
-        // }
+            const data = await response.json();
+            ui.updateServerStatus('Connected');
+            utils.addLog('✅ Server is online', 'success');
+            utils.updateResponse(data);
+            resolve(true);
+        } catch (err: any) {
+            ui.updateServerStatus('Disconnected');
+            utils.addLog('⚠️ Server offline', 'warning');
+            utils.updateResponse({ error: err.message });
+            resolve(false);
+        }
     })
 }
 
@@ -106,99 +103,66 @@ export function continueOffline() {
 // MinIO Upload Function
 export async function uploadToMinIO(analysisData: any) {
     utils.addLog('☁️ Uploading all recordings and images to MinIO...', 'info');
-    
+
+    let presigned_urls: Record<string, string> = {};
+
     try {
-        // Configure AWS SDK to work with MinIO
-        AWS.config.update({
-            accessKeyId: MedichekConfig.minIO.accessKey,
-            secretAccessKey: MedichekConfig.minIO.secretKey,
-            region: MedichekConfig.minIO.region,
-            s3ForcePathStyle: true, // Required for MinIO
-            signatureVersion: 'v4'
+        const response = await fetch(`${MedichekConfig.getServerUrl()}/api/minio/presigned/`, {
+            method: 'GET',
+            mode: 'cors',
         });
         
-        // Create S3 client pointing to MinIO endpoint
-        const s3 = new AWS.S3({
-            endpoint: `${MedichekConfig.minIO.useSSL ? 'https' : 'http'}://${MedichekConfig.minIO.endPoint}:${MedichekConfig.minIO.port}`,
-            s3ForcePathStyle: true,
-            signatureVersion: 'v4'
-        });
-        
-        const videosBucketName = MedichekConfig.minIO.videosBucketName;
-        const imagesBucketName = MedichekConfig.minIO.imagesBucketName;
-        const sessionId = analysisData.session_id;
-        let uploadCount = 0;
-        
-        // Helper function to generate MinIO URL
-        const getMinioUrl = (bucketName: string, objectKey: string) => {
-            const protocol = MedichekConfig.minIO.useSSL ? 'https' : 'http';
-            return `${protocol}://${MedichekConfig.minIO.endPoint}:${MedichekConfig.minIO.port}/${bucketName}/${objectKey}`;
-        };
-        
-        // Check if videos bucket exists, create if needed
-        try {
-            await new Promise((resolve, reject) => {
-                s3.headBucket({ Bucket: videosBucketName }, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
-            });
-        } catch (error: any) {
-            if (error.statusCode === 404 || error.code === 'NotFound') {
-                await new Promise((resolve, reject) => {
-                    s3.createBucket({ Bucket: videosBucketName }, (err, data) => {
-                        if (err) reject(err);
-                        else resolve(data);
-                    });
-                });
-                utils.addLog(`✅ Created bucket: ${videosBucketName}`, 'success');
-            } else {
-                throw error;
-            }
+        if (!response.ok) {
+            throw new Error(`MinIO server responded with status ${response.status}`);
         }
         
-        // Check if images bucket exists, create if needed
-        try {
-            await new Promise((resolve, reject) => {
-                s3.headBucket({ Bucket: imagesBucketName }, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
-            });
-        } catch (error: any) {
-            if (error.statusCode === 404 || error.code === 'NotFound') {
-                await new Promise((resolve, reject) => {
-                    s3.createBucket({ Bucket: imagesBucketName }, (err, data) => {
-                        if (err) reject(err);
-                        else resolve(data);
-                    });
-                });
-                utils.addLog(`✅ Created bucket: ${imagesBucketName}`, 'success');
-            } else {
-                throw error;
-            }
+        const data = await response.json();
+
+        if (!data.urls) {
+            throw new Error('No presigned URLs received from server');
         }
-        
-        // Upload video recordings to videos bucket (only steps 1-3 now)
+
+        utils.updateResponse({ data });
+        presigned_urls = data.urls;
+    } catch (err: any) {
+        utils.addLog('⚠️ Couldn\'t fetch presigned URLs from server', 'warning');
+        utils.updateResponse({ error: err.message });
+        return null;
+    }
+    
+    const videosBucketName = MedichekConfig.minIO.videosBucketName;
+    const imagesBucketName = MedichekConfig.minIO.imagesBucketName;
+    const sessionId = analysisData.session_id;
+    let uploadCount = 0;
+    
+    // Helper function to generate MinIO URL
+    const getMinioUrl = (bucketName: string, objectKey: string) => {
+        const protocol = MedichekConfig.minIO.useSSL ? 'https' : 'http';
+        return `${protocol}://${MedichekConfig.minIO.endPoint}:${MedichekConfig.minIO.port}/${bucketName}/${objectKey}`;
+    };
+    
+    // Upload video recordings to videos bucket (only steps 1-3 now)
+    try {
         for (let i = 1; i <= 3; i++) {
             const stepKey = `step${i}`;
             const blob = cam.stepRecordings[stepKey];
             
             if (blob) {
-                const filename = `step${i}.webm`;
+                const filename = `step${i}_video.webm`;
                 const objectKey = MedichekConfig.minIO.getObjectKey(sessionId, filename);
                 
-                await new Promise((resolve, reject) => {
-                    s3.putObject({
-                        Bucket: videosBucketName,
-                        Key: objectKey,
-                        Body: blob,
-                        ContentType: 'video/webm'
-                    }, (err, data) => {
-                        if (err) reject(err);
-                        else resolve(data);
-                    });
+                const response = await fetch(presigned_urls[filename], {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': blob.type // Set appropriate content type
+                    },
+                    body: blob
                 });
+
+                if (!response.ok) {
+                    utils.updateResponse(response)
+                    throw new Error(`Failed to upload ${filename} to MinIO`);
+                }
                 
                 // Store the MinIO URL for this step's video
                 const videoUrl = getMinioUrl(videosBucketName, objectKey);
@@ -211,23 +175,28 @@ export async function uploadToMinIO(analysisData: any) {
                 uploadCount++;
             }
         }
-        
-        // Upload step 1 (OCR) captured frame to images bucket
-        if (cam.step1CapturedFrameBlob) {
-            const filename = 'step1_product_label.png';
+    } catch (err: any) {
+        utils.addLog(`❌ Failed to upload video recordings: ${err.message}`, 'error');
+        return null;
+    }
+    
+    // Upload step 1 (OCR) captured frame to images bucket
+    if (cam.step1CapturedFrameBlob) {
+        try {
+            const filename = 'step1_image.png';
             const objectKey = MedichekConfig.minIO.getObjectKey(sessionId, filename);
             
-            await new Promise((resolve, reject) => {
-                s3.putObject({
-                    Bucket: imagesBucketName,
-                    Key: objectKey,
-                    Body: cam.step1CapturedFrameBlob!,
-                    ContentType: 'image/png'
-                }, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
+            const response = await fetch(presigned_urls[filename], {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': cam.step1CapturedFrameBlob.type // Set appropriate content type
+                },
+                body: cam.step1CapturedFrameBlob
             });
+
+            if (!response.ok) {
+                throw new Error(`Failed to upload ${filename} to MinIO`);
+            }
             
             // Store the MinIO URL for step 1 (OCR) image
             const imageUrl = getMinioUrl(imagesBucketName, objectKey);
@@ -238,62 +207,63 @@ export async function uploadToMinIO(analysisData: any) {
             
             utils.addLog(`✅ Uploaded ${filename} to images bucket`, 'success');
             uploadCount++;
+        } catch (err: any) {
+            utils.addLog(`❌ Failed to upload step 1 image: ${err.message}`, 'error');
+            return null;
         }
-        
-        // Upload step 2 (Palm Detection) captured frame to images bucket
-        if (cam.step2CapturedFrameBlob) {
-            const filename = 'step2_palm_detection.png';
+    }
+    
+    // Upload step 2 (Palm Detection) captured frame to images bucket
+    if (cam.step2CapturedFrameBlob) {
+        try {
+            const filename = 'step2_image.png';
             const objectKey = MedichekConfig.minIO.getObjectKey(sessionId, filename);
             
-            await new Promise((resolve, reject) => {
-                s3.putObject({
-                    Bucket: imagesBucketName,
-                    Key: objectKey,
-                    Body: cam.step2CapturedFrameBlob!,
-                    ContentType: 'image/png'
-                }, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
+            const response = await fetch(presigned_urls[filename], {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': cam.step2CapturedFrameBlob.type // Set appropriate content type
+                },
+                body: cam.step2CapturedFrameBlob
             });
+
+            if (!response.ok) {
+                throw new Error(`Failed to upload ${filename} to MinIO`);
+            }
             
-            // Store the MinIO URL for step 2 (Palm Detection) image
+            // Store the MinIO URL for step 1 (OCR) image
             const imageUrl = getMinioUrl(imagesBucketName, objectKey);
-            minioFileUrls.step2_image = {
+            minioFileUrls.step1_image = {
                 url: imageUrl,
                 uploaded_at: new Date().toISOString()
             };
             
             utils.addLog(`✅ Uploaded ${filename} to images bucket`, 'success');
             uploadCount++;
+        } catch (err: any) {
+            utils.addLog(`❌ Failed to upload step 1 image: ${err.message}`, 'error');
+            return null;
         }
-        
-        // Get current date in YYYYMMDD format for display
-        const now = new Date();
-        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-        
-        utils.addLog(`🎉 Successfully uploaded ${uploadCount} files to MinIO`, 'success');
-        utils.addLog(`📂 Videos bucket: ${videosBucketName}/${dateStr}/${sessionId}/`, 'info');
-        utils.addLog(`📂 Images bucket: ${imagesBucketName}/${dateStr}/${sessionId}/`, 'info');
-
-        analysisData.minio_urls = minioFileUrls;
-        
-        // Show completion screen with download button
-        const details = `
-            <div>${t('completion.sessionId')}: ${sessionId}</div>
-            <div>${t('completion.date')}: ${dateStr}</div>
-            <div>${t('completion.totalFiles')}: ${uploadCount}</div>
-        `;
-        
-        return details;
-        
-    } catch (err: any) {
-        utils.addLog(`❌ MinIO upload failed: ${err.message}`, 'error');
-        console.error('MinIO upload error:', err);
-        
-        // Return null on error (caller will handle fallback)
-        return null;
     }
+    
+    // Get current date in YYYYMMDD format for display
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    
+    utils.addLog(`🎉 Successfully uploaded ${uploadCount} files to MinIO`, 'success');
+    utils.addLog(`📂 Videos bucket: ${videosBucketName}/${dateStr}/${sessionId}/`, 'info');
+    utils.addLog(`📂 Images bucket: ${imagesBucketName}/${dateStr}/${sessionId}/`, 'info');
+
+    analysisData.minio_urls = minioFileUrls;
+    
+    // Show completion screen with download button
+    const details = `
+        <div>${t('completion.sessionId')}: ${sessionId}</div>
+        <div>${t('completion.date')}: ${dateStr}</div>
+        <div>${t('completion.totalFiles')}: ${uploadCount}</div>
+    `;
+    
+    return details;
 }
 
 export async function uploadAnalysisToServer(analysisData: any) {
