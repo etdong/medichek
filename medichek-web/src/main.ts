@@ -12,9 +12,12 @@ import { createWorker } from 'tesseract.js'
 
 //#region Declarations
 
+const queryString = window.location.search;
+const urlParams = new URLSearchParams(queryString);
+
 // Global state - Client-side only, no server sessions
 let analysisSession = {
-    sessionId: '',
+    sessionId: urlParams.get('process_id') || '00000000',
     startTime: Date.now(),
     currentStep: 0,
     totalSteps: 3,  // Only tracking OCR, Palm Detection, and Face Rubbing
@@ -42,6 +45,8 @@ let faceLandmarker: FaceLandmarker | null = null;
 
 // Automatic OCR scanning
 let autoOcrInterval: NodeJS.Timeout | null = null;
+const ocrTargetString = urlParams.get('product_number') || '1234567890';
+
 
 const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
@@ -49,7 +54,7 @@ const vision = await FilesetResolver.forVisionTasks(
 
 //#endregion
 
-export function updateSessionUI() {
+function updateSessionUI() {
     DOM.sessionIdElement.textContent = analysisSession.sessionId || t('status.sessionNone');
     DOM.currentStepElement.textContent = `${analysisSession.currentStep}/${analysisSession.totalSteps}`;
     
@@ -353,7 +358,9 @@ async function submitAnalysis() {
             const res = await server.uploadToMinIO(analysisData);
             if (res && server.minioFileUrls) {
                 // Include MinIO URLs for all uploaded files
-                analysisData.minio_urls = minioFileUrls;
+                minioFileUrls = analysisData.minio_urls;
+                console.log('MinIO File URLs:', minioFileUrls);
+                console.log('Analysis Data with MinIO URLs:', analysisData);
                 minioUploadSuccess = true;
                 utils.addLog('✅ MinIO upload completed, URLs captured', 'success');
             }
@@ -423,7 +430,7 @@ async function submitAnalysis() {
 }
 
 // Auto-scanning OCR functionality
-export function startAutoOcrScanning() {
+function startAutoOcrScanning() {
     if (autoOcrInterval) return; // Already running
     
     // Scan every second
@@ -433,13 +440,13 @@ export function startAutoOcrScanning() {
             return;
         }
         
-        const res = await cam.performAutoOcrScan();
+        const res = await cam.performAutoOcrScan(ocrTargetString);
 
         if (res) {
             stopAutoOcrScanning();
             clearInterval(autoOcrInterval!);
             // Mark as recognized
-            setOcrRecognized(true);
+            ocrRecognized = true;
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';
@@ -467,22 +474,13 @@ function stopAutoOcrScanning() {
 }
 
 // OCR state
-export let ocrRecognized = false;
-export let ocrSkipped = false;
-export function setOcrRecognized(recognized: boolean) {
-    ocrRecognized = recognized;
-}
-export function setOcrSkipped(skipped: boolean) {
-    ocrSkipped = skipped;
-}
+let ocrRecognized = false;
+let ocrSkipped = false;
 
 // Palm detection state
-export let palmSkipped = false;
-export function setPalmSkipped(skipped: boolean) {
-    palmSkipped = skipped;
-}
+let palmSkipped = false;
 
-export async function performOCR(canvas: any) {
+async function performOCR(canvas: any) {
     try {
         const worker = await createWorker();
         await worker.loadLanguage('chi_sim');
@@ -492,57 +490,42 @@ export async function performOCR(canvas: any) {
         
         utils.addLog(`📄 OCR Text: ${text.trim()}`, 'info');
         
-        // Check if at least 50% of the target Chinese characters are in the recognized text
+        // Check if the target string is present in the recognized text
         const recognizedText = text;
-        const targetCharacters = [
-            '样', '品', '标', '识', '单',
-            '检', '编', '号',
-            '留',
-            '测',
-            '多', '余',
-            '未',
-            '在',
-            '毕'
-        ];
-        
-        // Count how many target characters are found in the recognized text
-        const foundCharacters = targetCharacters.filter(char => recognizedText.includes(char));
-        const matchPercentage = (foundCharacters.length / targetCharacters.length) * 100;
-        
-        utils.addLog(`🔍 Character match: ${foundCharacters.length}/${targetCharacters.length} (${matchPercentage.toFixed(1)}%)`, 'info');
-        
-        if (matchPercentage >= 50) {
+        const targetString = ocrTargetString;
+
+        if (recognizedText.includes(targetString)) {
             ocrRecognized = true;
             utils.addLog('✅ Product label recognized!', 'success');
-            
+
             // Update compact display - only show success status
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
-            DOM.ocrResultCompact.innerHTML = '';  // No detailed message
-            
+            DOM.ocrResultCompact.innerHTML = '';
+
             // Hide OCR analysis overlay
             DOM.ocrAnalysisOverlay.style.display = 'none';
 
             // Update button state
             updateSessionUI();
-            
+
             // Auto-advance to next step after a short delay
             utils.addLog('⏭️ Auto-advancing to next step...', 'info');
             setTimeout(() => {
                 nextStep();
-            }, 1500); // 1.5 second delay to show success message
+            }, 1500);
         } else {
             ocrRecognized = false;
             utils.addLog('❌ Product label not found in image. Try again.', 'error');
-            
+
             // Update compact display - only show failed status
             DOM.ocrStatusBadge.textContent = t('frame.ocrNotFound');
             DOM.ocrStatusBadge.className = 'ocr-status failed';
-            DOM.ocrResultCompact.innerHTML = '';  // No detailed message
-            
+            DOM.ocrResultCompact.innerHTML = '';
+
             // Hide OCR analysis overlay
             DOM.ocrAnalysisOverlay.style.display = 'none';
-            
+
             // Show the modal for OCR failure
             DOM.ocrFailModal.style.display = 'flex';
         }
@@ -635,7 +618,7 @@ DOM.restartSessionBtn.addEventListener('click', restartSession);
 DOM.acceptRecordingBtn.addEventListener('click', async () => {
     try {
         // Wait for the promise to resolve so analysisSession gets the actual object
-        analysisSession = await cam.acceptRecordingConsent();
+        analysisSession = await cam.acceptRecordingConsent(analysisSession.sessionId);
         updateSessionUI();
         utils.addLog(`✅ Tracking session started: ${analysisSession.sessionId}`, 'success');
         utils.addLog('📊 All tracking is performed locally on this device', 'info');
@@ -747,15 +730,15 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     
     // Reset the captured frame state to allow new capture
     cam.resetCapturedFrame();
-    setOcrRecognized(false);
-    setOcrSkipped(false);
+    ocrRecognized = false;
+    ocrSkipped = false;
     
     // Re-enable capture button for retry
     DOM.captureFrameBtn.disabled = false;
     
     utils.addLog('Retry OCR - Capture a new frame', 'info');
 
-    startAutoOcrScanning
+    startAutoOcrScanning()
     
     // Update UI to allow recapture
     updateSessionUI();
@@ -766,7 +749,7 @@ DOM.continueAnywayBtn.addEventListener('click', () => {
     DOM.ocrFailModal.style.display = 'none';
 
     // Mark as manually reviewed/skipped
-    setOcrSkipped(true);
+    ocrSkipped = true;
     
     // Update the status badge to show manual review
     DOM.ocrStatusBadge.textContent = t('frame.ocrReview');
@@ -785,7 +768,7 @@ DOM.retryPalmBtn.addEventListener('click', () => {
     
     // Reset the captured frame state to allow new capture
     cam.resetCapturedFrame();
-    setPalmSkipped(false);
+    palmSkipped = false;
     
     // Re-enable capture button for retry
     DOM.captureFrameBtn.disabled = false;
@@ -801,7 +784,7 @@ DOM.continuePalmAnywayBtn.addEventListener('click', () => {
     DOM.palmFailModal.style.display = 'none';
 
     // Mark as manually reviewed/skipped
-    setPalmSkipped(true);
+    palmSkipped = true;
     
     // Update the status badge to show manual review
     DOM.palmStatusBadge.textContent = t('frame.ocrReview');  // Reusing the review text

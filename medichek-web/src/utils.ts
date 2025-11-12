@@ -9,7 +9,3 @@ export function updateResponse(data: any) {
     // Response panel removed from UI
     console.log('Response:', data);
 }
-
-export function generateSessionId() {
-    return 'client-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
-}

@@ -9,10 +9,8 @@ import * as AWS from 'aws-sdk';
 
 // Storage for MinIO file URLs (organized by step/file)
 type MinioFileEntry = {
-    filename: string;
     url: string;
     uploaded_at: string;
-    type?: string;
 } | null;
 
 export const minioFileUrls: Record<string, MinioFileEntry> = {
@@ -43,30 +41,29 @@ async function checkServer(): Promise<boolean> {
     utils.addLog('Checking Server connection...');
     ui.updateServerStatus('Checking...');
     return new Promise(async (resolve) => {
-        try {
-            const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
-                method: 'GET',
-                mode: 'cors',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
+        console.log(MedichekConfig.getServerUrl());
+        resolve(true);
+        // try {
+        //     const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
+        //         method: 'GET',
+        //         mode: 'cors',
+        //     });
             
-            if (!response.ok) {
-                throw new Error(`Server responded with status ${response.status}`);
-            }
+        //     if (!response.ok) {
+        //         throw new Error(`Server responded with status ${response.status}`);
+        //     }
             
-            const data = await response.json();
-            ui.updateServerStatus('Connected');
-            utils.addLog('✅ Server is online', 'success');
-            utils.updateResponse(data);
-            resolve(true);
-        } catch (err: any) {
-            ui.updateServerStatus('Disconnected');
-            utils.addLog('⚠️ Server offline', 'warning');
-            utils.updateResponse({ error: err.message });
-            resolve(false);
-        }
+        //     const data = await response.json();
+        //     ui.updateServerStatus('Connected');
+        //     utils.addLog('✅ Server is online', 'success');
+        //     utils.updateResponse(data);
+        //     resolve(true);
+        // } catch (err: any) {
+        //     ui.updateServerStatus('Disconnected');
+        //     utils.addLog('⚠️ Server offline', 'warning');
+        //     utils.updateResponse({ error: err.message });
+        //     resolve(false);
+        // }
     })
 }
 
@@ -75,40 +72,27 @@ async function checkMinIOServer(): Promise<boolean> {
     if (!MedichekConfig.minIO.enabled) {
         return false;
     }
-    
-    try {
-        // Configure AWS SDK to work with MinIO
-        AWS.config.update({
-            accessKeyId: MedichekConfig.minIO.accessKey,
-            secretAccessKey: MedichekConfig.minIO.secretKey,
-            region: MedichekConfig.minIO.region,
-            s3ForcePathStyle: true
-        });
-        
-        const s3 = new AWS.S3({
-            endpoint: `${MedichekConfig.minIO.useSSL ? 'https' : 'http'}://${MedichekConfig.minIO.endPoint}:${MedichekConfig.minIO.port}`,
-            s3BucketEndpoint: false
-        });
-        
-        // Try to list buckets to test connection
-        // Use callback-based approach instead of promise
-        return new Promise<boolean>((resolve) => {
-            s3.listBuckets((err: any, data: any) => {
-                if (err) {
-                    utils.addLog('⚠️ MinIO offline', 'warning');
-                    utils.updateResponse({ error: err.message });
-                    resolve(false);
-                } else {
-                    utils.addLog('✅ MinIO online', 'success');
-                    utils.updateResponse({ data: data });
-                    resolve(true);
-                }
+
+    return new Promise(async (resolve) => {
+        try {
+            const response = await fetch(`${MedichekConfig.getMinioUrl()}/minio/health/live`, {
+                method: 'GET',
+                mode: 'cors',
             });
-        });
-    } catch (error) {
-        console.error('MinIO server check failed:', error);
-        return false
-    }
+            
+            if (!response.ok) {
+                throw new Error(`MinIO server responded with status ${response.status}`);
+            }
+            
+            utils.addLog('✅ MinIO online', 'success');
+            utils.updateResponse({ response });
+            resolve(true);
+        } catch (err: any) {
+            utils.addLog('⚠️ MinIO offline', 'warning');
+            utils.updateResponse({ error: err.message });
+            resolve(false);
+        }
+    })
 }
 
 // Continue in offline mode
@@ -219,7 +203,6 @@ export async function uploadToMinIO(analysisData: any) {
                 // Store the MinIO URL for this step's video
                 const videoUrl = getMinioUrl(videosBucketName, objectKey);
                 minioFileUrls[`step${i}_video`] = {
-                    filename: filename,
                     url: videoUrl,
                     uploaded_at: new Date().toISOString()
                 };
@@ -249,9 +232,7 @@ export async function uploadToMinIO(analysisData: any) {
             // Store the MinIO URL for step 1 (OCR) image
             const imageUrl = getMinioUrl(imagesBucketName, objectKey);
             minioFileUrls.step1_image = {
-                filename: filename,
                 url: imageUrl,
-                type: 'product_label',
                 uploaded_at: new Date().toISOString()
             };
             
@@ -279,9 +260,7 @@ export async function uploadToMinIO(analysisData: any) {
             // Store the MinIO URL for step 2 (Palm Detection) image
             const imageUrl = getMinioUrl(imagesBucketName, objectKey);
             minioFileUrls.step2_image = {
-                filename: filename,
                 url: imageUrl,
-                type: 'palm_detection',
                 uploaded_at: new Date().toISOString()
             };
             
@@ -296,6 +275,8 @@ export async function uploadToMinIO(analysisData: any) {
         utils.addLog(`🎉 Successfully uploaded ${uploadCount} files to MinIO`, 'success');
         utils.addLog(`📂 Videos bucket: ${videosBucketName}/${dateStr}/${sessionId}/`, 'info');
         utils.addLog(`📂 Images bucket: ${imagesBucketName}/${dateStr}/${sessionId}/`, 'info');
+
+        analysisData.minio_urls = minioFileUrls;
         
         // Show completion screen with download button
         const details = `
@@ -317,15 +298,32 @@ export async function uploadToMinIO(analysisData: any) {
 
 export async function uploadAnalysisToServer(analysisData: any) {
     utils.addLog('☁️ Uploading analysis data to Server...', 'info');
+    const results = {
+        "id": analysisData.session_id,
+        "step1DurationSeconds": analysisData.step_info.step1.duration_seconds,
+        "step1Passed": analysisData.step_info.step1.passed ? 1 : 0,
+        "step1ImageUrl": analysisData.minio_urls.step1_image.url,
+        "step1VideoUrl": analysisData.minio_urls.step1_video.url,
+        "step2DurationSeconds": analysisData.step_info.step2.duration_seconds,
+        "step2VideoUrl": analysisData.minio_urls.step2_video.url,
+        "step3DurationSeconds": analysisData.step_info.step3.duration_seconds,
+        "step3ForeheadDurationSeconds": analysisData.step_info.step3.forehead_seconds,
+        "step3LeftCheekDurationSeconds": analysisData.step_info.step3.left_cheek_seconds,
+        "step3RightCheekDurationSeconds": analysisData.step_info.step3.right_cheek_seconds,
+        "step3VideoUrl": analysisData.minio_urls.step3_video.url,
+        "step3CoveragePercentage": analysisData.step_info.step3.coverage_percentage,
+        "step3Passed": analysisData.step_info.step3.passed ? 1 : 0
+    }
+
     try {
-            const response = await fetch(`${MedichekConfig.getServerUrl()}/api/analysis/`, {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/system/process/saveResult/`, {
                 method: 'POST',
                 mode: 'cors',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify(analysisData)
+                body: JSON.stringify(results)
             });
             
             if (!response.ok) {

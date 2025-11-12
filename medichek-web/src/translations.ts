@@ -121,7 +121,7 @@ const translations: Record<string, Record<string, string>> = {
         
         // Completion Screen
         'completion.uploadSuccess': 'Upload Successful!',
-        'completion.uploadMessage': 'All session data has been uploaded to MinIO.',
+        'completion.uploadMessage': 'All session data has been uploaded.',
         'completion.downloadSuccess': 'Download Successful!',
         'completion.downloadMessage': 'All session data has been downloaded to your device.',
         'completion.downloadBtn': 'Download Analysis',
