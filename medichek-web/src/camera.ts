@@ -39,7 +39,7 @@ export async function startTracking() {
 }
 
 // Handle recording consent acceptance
-export async function acceptRecordingConsent() {
+export async function acceptRecordingConsent(session_id: string) {
     // Hide modal
     DOM.recordingConsentModal.style.display = 'none';
     
@@ -48,7 +48,7 @@ export async function acceptRecordingConsent() {
     
     // Initialize client-side session (currentStep starts at 0 for preliminaries)
     let analysisSession = {
-        sessionId: utils.generateSessionId(),
+        sessionId: session_id,
         startTime: Date.now(),
         currentStep: 0,  // 0 = preliminaries (camera + face centering)
         totalSteps: 3,   // Only 3 actual steps now
@@ -322,7 +322,12 @@ export async function captureFrame(stepNum: number) {
     }
 }
 
-export async function performAutoOcrScan(): Promise<boolean> {
+export function resetCapturedFrame() {
+    step1CapturedFrameBlob = null;
+    DOM.capturedFrameArea.classList.add('empty');
+}
+
+export async function performAutoOcrScan(targetString: string): Promise<boolean> {
     if (!DOM.webcam) return false;
     
     // Calculate capture area dimensions
@@ -354,22 +359,8 @@ export async function performAutoOcrScan(): Promise<boolean> {
         
         // Check if at least 50% of the target Chinese characters are in the recognized text
         const recognizedText = text;
-        const targetCharacters = [
-            '样', '品', '标', '识', '单',
-            '检', '编', '号',
-            '留',
-            '测',
-            '多', '余',
-            '未',
-            '在',
-            '毕'
-        ];
         
-        // Count how many target characters are found in the recognized text
-        const foundCharacters = targetCharacters.filter(char => recognizedText.includes(char));
-        const matchPercentage = (foundCharacters.length / targetCharacters.length) * 100;
-        
-        if (matchPercentage >= 65) {
+        if (recognizedText.includes(targetString)) {
             // Store the captured frame
             await new Promise<void>(resolve => {
                 captureCanvas.toBlob(blob => {

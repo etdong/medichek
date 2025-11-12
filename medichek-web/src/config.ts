@@ -20,23 +20,15 @@ const ENV = {
 export const MedichekConfig = {
     // Backend Server URL
     serverUrl: ENV.SERVER_URL,
-    
-    // Auto-detect environment (optional)
-    // This will use different URLs for localhost vs production
-    useAutoDetect: false,
-
-    // Production Server URL (used when useAutoDetect is true and not on localhost)
-    productionServerUrl: ENV.PRODUCTION_SERVER_URL,
 
     // Get the appropriate Server URL based on configuration
     getServerUrl: function() {
-        if (this.useAutoDetect) {
-            const isLocalhost = window.location.hostname === 'localhost' || 
-                              window.location.hostname === '127.0.0.1' ||
-                              window.location.hostname === '';
-            return isLocalhost ? this.serverUrl : this.productionServerUrl;
-        }
         return this.serverUrl;
+    },
+
+    getMinioUrl: function() {
+        const protocol = ENV.MINIO_USE_SSL ? 'https' : 'http';
+        return `${protocol}://${ENV.MINIO_ENDPOINT}:${ENV.MINIO_PORT}`;
     },
     
     // MinIO Configuration
