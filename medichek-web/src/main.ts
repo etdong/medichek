@@ -8,7 +8,7 @@ import * as mp from './mp_manager.js';
 import { FilesetResolver, FaceDetector, HandLandmarker, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { Camera } from '@mediapipe/camera_utils';
 import { t, updateLanguage } from './translations';
-import { createWorker } from 'tesseract.js'
+import Tesseract from 'tesseract.js';
 
 //#region Declarations
 
@@ -461,7 +461,7 @@ function startAutoOcrScanning() {
                 nextStep();
             }, 1500);
         }
-    }, 1000);
+    }, 500);
     
     utils.addLog('🔍 Auto-scanning for product label...', 'info');
 }
@@ -482,7 +482,7 @@ let palmSkipped = false;
 
 async function performOCR(canvas: any) {
     try {
-        const worker = await createWorker();
+        const worker = await Tesseract.createWorker();
         await worker.loadLanguage('chi_sim');
         await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(canvas);
@@ -586,6 +586,7 @@ DOM.retryConnectionBtn.addEventListener('click', async () => {
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
+    DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks
     if (analysisSession.currentStep == 1) {
         stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
