@@ -6,7 +6,6 @@
 // For production, set these as actual environment variables
 const ENV = {
     SERVER_URL: import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:8000',
-    PRODUCTION_SERVER_URL: import.meta.env.VITE_PRODUCTION_SERVER_URL || 'https://api.medichek.com',
     MINIO_ENDPOINT: import.meta.env.VITE_MINIO_ENDPOINT || 'localhost',
     MINIO_PORT: import.meta.env.VITE_MINIO_PORT || 9000,
     MINIO_USE_SSL: import.meta.env.VITE_MINIO_USE_SSL === 'true' || false,

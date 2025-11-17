@@ -41,29 +41,32 @@ async function checkServer(): Promise<boolean> {
     utils.addLog('Checking Server connection...');
     ui.updateServerStatus('Checking...');
     return new Promise(async (resolve) => {
-        console.log(MedichekConfig.getServerUrl());
-        resolve(true);
-        // try {
-        //     const response = await fetch(`${MedichekConfig.getServerUrl()}/api/health/`, {
-        //         method: 'GET',
-        //         mode: 'cors',
-        //     });
+        resolve(true)
+        try {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/prod-api/system/process/saveResult/`, {
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'authorization': 'Bearer ' + import.meta.env.VITE_BEARER_TOKEN,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            });
+            if (!response.ok) {
+                utils.updateResponse(response)
+            }
             
-        //     if (!response.ok) {
-        //         throw new Error(`Server responded with status ${response.status}`);
-        //     }
-            
-        //     const data = await response.json();
-        //     ui.updateServerStatus('Connected');
-        //     utils.addLog('✅ Server is online', 'success');
-        //     utils.updateResponse(data);
-        //     resolve(true);
-        // } catch (err: any) {
-        //     ui.updateServerStatus('Disconnected');
-        //     utils.addLog('⚠️ Server offline', 'warning');
-        //     utils.updateResponse({ error: err.message });
-        //     resolve(false);
-        // }
+            const data = await response.json();
+            ui.updateServerStatus('Connected');
+            utils.addLog('✅ Server is online', 'success');
+            utils.updateResponse(data);
+            resolve(true);
+        } catch (err: any) {
+            ui.updateServerStatus('Disconnected');
+            utils.addLog('⚠️ Server offline', 'warning');
+            utils.updateResponse({ error: err.message });
+            resolve(false);
+        }
     })
 }
 
@@ -85,7 +88,7 @@ async function checkMinIOServer(): Promise<boolean> {
             }
             
             utils.addLog('✅ MinIO online', 'success');
-            utils.updateResponse({ response });
+            utils.updateResponse(response);
             resolve(true);
         } catch (err: any) {
             utils.addLog('⚠️ MinIO offline', 'warning');
@@ -300,13 +303,13 @@ export async function uploadAnalysisToServer(analysisData: any) {
     utils.addLog('☁️ Uploading analysis data to Server...', 'info');
     const results = {
         "id": analysisData.session_id,
-        "step1DurationSeconds": analysisData.step_info.step1.duration_seconds,
+        "step1DurationSeconds": analysisData.step_info.step1.duration,
         "step1Passed": analysisData.step_info.step1.passed ? 1 : 0,
         "step1ImageUrl": analysisData.minio_urls.step1_image.url,
         "step1VideoUrl": analysisData.minio_urls.step1_video.url,
-        "step2DurationSeconds": analysisData.step_info.step2.duration_seconds,
+        "step2DurationSeconds": analysisData.step_info.step2.duration,
         "step2VideoUrl": analysisData.minio_urls.step2_video.url,
-        "step3DurationSeconds": analysisData.step_info.step3.duration_seconds,
+        "step3DurationSeconds": analysisData.step_info.step3.duration,
         "step3ForeheadDurationSeconds": analysisData.step_info.step3.forehead_seconds,
         "step3LeftCheekDurationSeconds": analysisData.step_info.step3.left_cheek_seconds,
         "step3RightCheekDurationSeconds": analysisData.step_info.step3.right_cheek_seconds,
@@ -316,10 +319,11 @@ export async function uploadAnalysisToServer(analysisData: any) {
     }
 
     try {
-            const response = await fetch(`${MedichekConfig.getServerUrl()}/system/process/saveResult/`, {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}/prod-api/system/process/saveResult/`, {
                 method: 'POST',
                 mode: 'cors',
                 headers: {
+                    'authorization': 'Bearer ' + import.meta.env.VITE_BEARER_TOKEN,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },

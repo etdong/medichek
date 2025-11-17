@@ -3,6 +3,8 @@
 export const languageSelectModal: HTMLElement = document.getElementById('language-select-modal') as HTMLElement;
 export const selectLangEnBtn: HTMLButtonElement = document.getElementById('select-lang-en') as HTMLButtonElement;
 export const selectLangZhBtn: HTMLButtonElement = document.getElementById('select-lang-zh') as HTMLButtonElement;
+export const langEnBtn: HTMLButtonElement = document.getElementById('lang-en') as HTMLButtonElement;
+export const langZhBtn: HTMLButtonElement = document.getElementById('lang-zh') as HTMLButtonElement;
 
 export const loadingScreen: HTMLElement = document.getElementById('loading-screen') as HTMLElement;
 export const serverCheckStatus: HTMLElement = document.getElementById('server-check') as HTMLElement;

@@ -359,8 +359,6 @@ async function submitAnalysis() {
             if (res && server.minioFileUrls) {
                 // Include MinIO URLs for all uploaded files
                 minioFileUrls = analysisData.minio_urls;
-                console.log('MinIO File URLs:', minioFileUrls);
-                console.log('Analysis Data with MinIO URLs:', analysisData);
                 minioUploadSuccess = true;
                 utils.addLog('✅ MinIO upload completed, URLs captured', 'success');
             }
@@ -557,23 +555,23 @@ function restartSession() {
 addEventListener('load', () => {
     // Check if language is already set
     // Show language selection modal and hide loading screen
-    DOM.languageSelectModal.style.display = 'flex';
-    DOM.loadingScreen.style.display = 'none';
+    DOM.loadingScreen.style.display = 'flex';
+    initializeApplication();
+    updateLanguage('zh');
 });
 
 // Event listeners for language selection modal
-DOM.selectLangEnBtn.addEventListener('click', () => {
+// Language selector event listeners
+DOM.langEnBtn.addEventListener('click', () => {
     updateLanguage('en');
-    DOM.languageSelectModal.style.display = 'none';
-    DOM.loadingScreen.style.display = 'flex';
-    initializeApplication();
+    // Re-translate dynamic content after language change
+    updateSessionUI();
 });
 
-DOM.selectLangZhBtn.addEventListener('click', () => {
+DOM.langZhBtn.addEventListener('click', () => {
     updateLanguage('zh');
-    DOM.languageSelectModal.style.display = 'none';
-    DOM.loadingScreen.style.display = 'flex';
-    initializeApplication();
+    // Re-translate dynamic content after language change
+    updateSessionUI();
 });
 
 // Event listeners for loading screen

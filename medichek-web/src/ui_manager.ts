@@ -21,27 +21,6 @@ export function updateServerStatus(newStatus: string) {
         newStatus === 'Checking...' ? 'checking' : 'disconnected');
 }
 
-// Update loading screen status checks with current language
-export function updateLoadingScreenStatuses(currentServerStatus: string, currentMinioStatus: string) {
-    // Update Status
-    if (currentServerStatus === 'checking') {
-        DOM.serverCheckStatus.textContent = t('loading.checking');
-    } else if (currentServerStatus === 'online') {
-        DOM.serverCheckStatus.textContent = t('loading.online');
-    } else if (currentServerStatus === 'offline') {
-        DOM.serverCheckStatus.textContent = t('loading.offline');
-    }
-
-    // Update MinIO status
-    if (currentMinioStatus === 'checking') {
-        DOM.minioCheckStatus.textContent = t('loading.checking');
-    } else if (currentMinioStatus === 'online') {
-        DOM.minioCheckStatus.textContent = t('loading.online');
-    } else if (currentMinioStatus === 'offline') {
-        DOM.minioCheckStatus.textContent = t('loading.offline');
-    }
-}
-
 // Update frame capture statuses with current language
 export function updateFrameCaptureStatuses(currentOcrStatus: string, currentPalmStatus: string) {
     // Update OCR status badge
