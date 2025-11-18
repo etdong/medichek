@@ -18,49 +18,46 @@
         var process = process || { env: { DEBUG: undefined }, version: '' }; // Basic polyfill for process
     </script>
 
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="./src/main.ts"></script>
     
     <!-- MediaPipe Dependencies -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous" type="module"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="./src/externs/control_utils.js" crossorigin="anonymous"></script>
+    <script src="./src/externs/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="./src/externs/face_detection.js" crossorigin="anonymous"></script>
+    <script src="./src/externs/vision_bundle.mjs" crossorigin="anonymous" type="module"></script>
     
     <!-- Tesseract.js for OCR -->
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <script src='./src/externs/tesseract.min.js'></script>
     
     <!-- JSZip for creating zip files -->
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="./src/externs/jszip.min.js"></script>
     
     <!-- AWS SDK for S3 (MinIO compatible) -->
-    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1.24.min.js"></script>
+    <script src="./src/externs/aws-sdk-2.1.24.min.js"></script>
 </head>
 <body>
     <!-- Loading Screen (hidden initially, shown after language selection) -->
     <div id="loading-screen" class="loading-screen" style="display: none;">
         <div class="loading-content">
             <div class="loading-spinner"></div>
-            <h2 class="loading-title" data-i18n="loading.title">Initializing</h2>
-            <p class="loading-message" data-i18n="loading.message">Checking server connections...</p>
+            <h2 class="loading-title" data-i18n="loading.title">初始化中</h2>
+            <p class="loading-message" data-i18n="loading.message">正在检查服务器连接...</p>
             <div id="server-check-status" class="server-check-status">
                 <div class="server-check-item">
-                    <span class="check-label" data-i18n="loading.server">Backend: </span>
-                    <span id="server-check" class="check-status checking" data-i18n="loading.checking">Checking...</span>
+                    <span class="check-label" data-i18n="loading.server">后端：</span>
+                    <span id="server-check" class="check-status checking" data-i18n="loading.checking">正在检查...</span>
                 </div>
                 <div class="server-check-item">
-                    <span class="check-label" data-i18n="loading.minio">MinIO:</span>
-                    <span id="minio-check" class="check-status checking" data-i18n="loading.checking">Checking...</span>
+                    <span class="check-label" data-i18n="loading.minio">MinIO：</span>
+                    <span id="minio-check" class="check-status checking" data-i18n="loading.checking">正在检查...</span>
                 </div>
             </div>
             <div id="offline-prompt" class="offline-prompt" style="display: none;">
-                <p class="offline-message" data-i18n="loading.offline.warning">⚠️ Some services are unavailable. You can continue in offline mode.</p>
-                <p class="offline-details" data-i18n="loading.offline.details">Offline mode will download analysis data locally instead of uploading to servers.</p>
+                <p class="offline-message" data-i18n="loading.offline.warning">⚠️ 部分服务不可用。您可以继续离线模式。</p>
+                <p class="offline-details" data-i18n="loading.offline.details">离线模式将把分析数据下载到本地，而不是上传到服务器。</p>
                 <div class="offline-actions">
-                    <button id="continue-offline-btn" class="btn btn-primary" data-i18n="loading.offline.continue">Continue Offline</button>
-                    <button id="retry-connection-btn" class="btn btn-secondary" data-i18n="loading.offline.retry">Retry Connection</button>
+                    <button id="continue-offline-btn" class="btn btn-primary" data-i18n="loading.offline.continue">继续离线</button>
+                    <button id="retry-connection-btn" class="btn btn-secondary" data-i18n="loading.offline.retry">重试连接</button>
                 </div>
             </div>
         </div>
@@ -76,28 +73,28 @@
         <!-- Status Bar -->
         <div class="status-panel">
             <div class="status-item">
-                <span class="status-label" data-i18n="status.server">Server:</span>
-                <span id="server-status" class="status-badge checking" data-i18n="status.checking">Checking...</span>
+                <span class="status-label" data-i18n="status.server">服务器：</span>
+                <span id="server-status" class="status-badge checking" data-i18n="status.checking">正在检查...</span>
             </div>
             <div class="status-item">
-                <span class="status-label" data-i18n="status.session">Session:</span>
-                <span id="session-id" class="status-value" data-i18n="status.none">None</span>
+                <span class="status-label" data-i18n="status.session">会话：</span>
+                <span id="session-id" class="status-value" data-i18n="status.none">无</span>
             </div>
             <div class="status-item">
-                <span class="status-label" data-i18n="status.step">Step:</span>
-                <span id="current-step" class="status-value">0/5</span>
+                <span class="status-label" data-i18n="status.step">步骤：</span>
+                <span id="current-step" class="status-value">0/3</span>
             </div>
         </div>
 
         <!-- Captured Frame Preview Area (Always visible - attached to status bar) -->
         <div id="captured-frame-area" class="captured-frame-area empty">
-            <div class="captured-frame-placeholder" data-i18n="frame.placeholder">Captured frames will appear here</div>
+            <div class="captured-frame-placeholder" data-i18n="frame.placeholder">捕获的图像将显示在此处</div>
             <div class="captured-frame-content">
                 <div class="captured-frames-grid">
                     <!-- Step 3: Product Label Capture -->
                     <div class="frame-slot" id="step1-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label" data-i18n="frame.step1">Step 1</span>
+                            <span class="frame-label" data-i18n="frame.step1">步骤 1</span>
                             <span id="ocr-status" class="ocr-status"></span>
                         </div>
                         <canvas id="step1-frame-canvas" class="frame-canvas"></canvas>
@@ -107,7 +104,7 @@
                     <!-- Step 4: Palm Detection Capture -->
                     <div class="frame-slot" id="step2-frame-slot">
                         <div class="frame-header">
-                            <span class="frame-label" data-i18n="frame.step2">Step 2</span>
+                            <span class="frame-label" data-i18n="frame.step2">步骤 2</span>
                             <span id="palm-status" class="palm-status"></span>
                         </div>
                         <canvas id="step2-frame-canvas" class="frame-canvas"></canvas>
@@ -124,7 +121,7 @@
             <!-- Step Status Container (fixed height wrapper) -->
             <div class="step-status-container">
                 <div class="step-status-overlay" id="step-status-overlay">
-                    <div id="step-instruction" class="step-instruction">Ready to begin</div>
+                    <div id="step-instruction" class="step-instruction">准备开始</div>
                     <div id="step-progress" class="step-progress"></div>
                 </div>
             </div>
@@ -142,22 +139,22 @@
                 <!-- Warning Toast -->
                 <div id="warning-toast" class="warning-toast">
                     <span class="toast-icon">⚠️</span>
-                    <span class="toast-message">Please keep your face in the center frame</span>
+                    <span class="toast-message">请保持面部在画面中央</span>
                 </div>
                 
                 <!-- Hand Out of Bounds Warning -->
                 <div id="hand-bounds-warning" class="hand-bounds-warning">
                     <span class="warning-icon">⚠️</span>
-                    <span class="warning-text" data-i18n="warning.keepInFrame">Keep hand in frame</span>
+                    <span class="warning-text" data-i18n="warning.keepInFrame">请保持手在画面内</span>
                 </div>
             </div>
 
             <!-- Action Button Container -->
             <div class="action-button-container">
-                <button id="start-tracking" class="btn btn-primary" data-i18n="button.start">Start</button>
-                <button id="next-step" class="btn btn-primary" style="display: none;" data-i18n="button.nextStep">Next Step</button>
-                <button id="capture-frame" class="btn btn-primary" style="display: none;" data-i18n="button.manualCapture">Manual Capture</button>
-                <button id="finish-session" class="btn btn-success" style="display: none;" data-i18n="button.finish">Finish</button>
+                <button id="start-tracking" class="btn btn-primary" data-i18n="button.start">开始</button>
+                <button id="next-step" class="btn btn-primary" style="display: none;" data-i18n="button.nextStep">下一步</button>
+                <button id="capture-frame" class="btn btn-primary" style="display: none;" data-i18n="button.manualCapture">手动捕获</button>
+                <button id="finish-session" class="btn btn-success" style="display: none;" data-i18n="button.finish">完成</button>
             </div>
         </div>
         
@@ -165,47 +162,27 @@
         <div id="review-screen" class="completion-screen" style="display: none;">
             <div class="completion-content">
                 <div class="completion-icon">✅</div>
-                <h2 class="completion-title" data-i18n="review.title">Session Complete!</h2>
-                <p class="completion-message" data-i18n="review.message">You have completed all steps. What would you like to do?</p>
+                <h2 class="completion-title" data-i18n="review.title">会话完成！</h2>
+                <p class="completion-message" data-i18n="review.message">您已完成所有步骤。请选择下一步操作。</p>
                 <div class="completion-details">
                     <div class="review-summary">
                         <div class="review-item">
-                            <span class="review-label" data-i18n="review.ocr">Product Label:</span>
-                            <span id="review-ocr-status" class="review-value" data-i18n="review.captured">✓ Captured</span>
+                            <span class="review-label" data-i18n="review.ocr">产品标签：</span>
+                            <span id="review-ocr-status" class="review-value" data-i18n="review.captured">✓ 已捕获</span>
                         </div>
                         <div class="review-item">
-                            <span class="review-label" data-i18n="review.palm">Hand Detection:</span>
-                            <span id="review-palm-status" class="review-value" data-i18n="review.captured">✓ Captured</span>
+                            <span class="review-label" data-i18n="review.palm">手部检测：</span>
+                            <span id="review-palm-status" class="review-value" data-i18n="review.captured">✓ 已捕获</span>
                         </div>
                         <div class="review-item">
-                            <span class="review-label" data-i18n="review.face">Face Rubbing:</span>
-                            <span id="review-face-status" class="review-value" data-i18n="review.completed">✓ Completed</span>
+                            <span class="review-label" data-i18n="review.face">面部擦拭：</span>
+                            <span id="review-face-status" class="review-value" data-i18n="review.completed">✓ 已完成</span>
                         </div>
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button id="submit-analysis-btn" class="btn btn-success" data-i18n="review.submit">Submit Analysis</button>
-                    <button id="restart-session-btn" class="btn btn-secondary" data-i18n="review.restart">Restart Session</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Language Selection Modal -->
-        <div id="language-select-modal" class="modal-overlay" style="display: flex;">
-            <div class="modal-content language-modal">
-                <div class="modal-header">
-                    <h3 class="modal-title">Select Language / 选择语言</h3>
-                </div>
-                <div class="modal-body">
-                    <p style="text-align: center; margin-bottom: 20px;">Please select your preferred language<br>请选择您的首选语言</p>
-                    <div class="language-options">
-                        <button id="select-lang-en" class="btn btn-primary btn-large" style="width: 100%; margin-bottom: 15px;">
-                            English
-                        </button>
-                        <button id="select-lang-zh" class="btn btn-primary btn-large" style="width: 100%;">
-                            简体中文
-                        </button>
-                    </div>
+                    <button id="submit-analysis-btn" class="btn btn-success" data-i18n="review.submit">提交分析</button>
+                    <button id="restart-session-btn" class="btn btn-secondary" data-i18n="review.restart">重新开始会话</button>
                 </div>
             </div>
         </div>
@@ -215,19 +192,19 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <span class="modal-icon">⚠️</span>
-                    <h3 class="modal-title" data-i18n="ocr.fail.title">Product Label Not Recognized</h3>
+                    <h3 class="modal-title" data-i18n="ocr.fail.title">未识别到产品标签</h3>
                 </div>
                 <div class="modal-body">
-                    <p data-i18n="ocr.fail.message">The automatic verification could not detect the product label the captured image.</p>
-                    <p><strong data-i18n="ocr.fail.question">What would you like to do?</strong></p>
+                    <p data-i18n="ocr.fail.message">自动验证未能在捕获的图像中检测到产品标签。</p>
+                    <p><strong data-i18n="ocr.fail.question">您想如何操作？</strong></p>
                     <ul>
-                        <li><strong data-i18n="ocr.fail.retryLabel">Retry:</strong> <span data-i18n="ocr.fail.retry">Capture a new image with better lighting or positioning</span></li>
-                        <li><strong data-i18n="ocr.fail.continueLabel">Continue:</strong> <span data-i18n="ocr.fail.continue">Submit the image for manual review</span></li>
+                        <li><strong data-i18n="ocr.fail.retryLabel">重试：</strong> <span data-i18n="ocr.fail.retry">请重新拍摄一张光线或位置更好的图片</span></li>
+                        <li><strong data-i18n="ocr.fail.continueLabel">继续：</strong> <span data-i18n="ocr.fail.continue">提交图片进行人工审核</span></li>
                     </ul>
                 </div>
                 <div class="modal-actions">
-                    <button id="retry-ocr" class="btn btn-primary" data-i18n="ocr.fail.retryBtn">Retry Capture</button>
-                    <button id="continue-anyway" class="btn btn-secondary" data-i18n="ocr.fail.continueBtn">Continue</button>
+                    <button id="retry-ocr" class="btn btn-primary" data-i18n="ocr.fail.retryBtn">重试捕获</button>
+                    <button id="continue-anyway" class="btn btn-secondary" data-i18n="ocr.fail.continueBtn">继续</button>
                 </div>
             </div>
         </div>
@@ -237,20 +214,20 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <span class="modal-icon">⚠️</span>
-                    <h3 class="modal-title" data-i18n="palm.fail.title">Product Not Detected</h3>
+                    <h3 class="modal-title" data-i18n="palm.fail.title">未检测到产品</h3>
                 </div>
                 <div class="modal-body">
-                    <p data-i18n="palm.fail.message">We weren't able to scan the product in your hand.</p>
-                    <p data-i18n="palm.fail.instruction">You can continue with manual capture for backend review.</p>
-                    <p><strong data-i18n="palm.fail.question">What would you like to do?</strong></p>
+                    <p data-i18n="palm.fail.message">未能扫描到您手中的产品。</p>
+                    <p data-i18n="palm.fail.instruction">您可以继续手动捕获以供后台审核。</p>
+                    <p><strong data-i18n="palm.fail.question">您想如何操作？</strong></p>
                     <ul>
-                        <li><strong data-i18n="palm.fail.retryLabel">Retry:</strong> <span data-i18n="palm.fail.retry">Capture a new image with the product more visible</span></li>
-                        <li><strong data-i18n="palm.fail.continueLabel">Continue:</strong> <span data-i18n="palm.fail.continue">Submit the image for manual review</span></li>
+                        <li><strong data-i18n="palm.fail.retryLabel">重试：</strong> <span data-i18n="palm.fail.retry">请重新拍摄一张产品更清晰可见的图片</span></li>
+                        <li><strong data-i18n="palm.fail.continueLabel">继续：</strong> <span data-i18n="palm.fail.continue">提交图片进行人工审核</span></li>
                     </ul>
                 </div>
                 <div class="modal-actions">
-                    <button id="retry-palm" class="btn btn-primary" data-i18n="palm.fail.retryBtn">Retry Capture</button>
-                    <button id="continue-palm-anyway" class="btn btn-secondary" data-i18n="palm.fail.continueBtn">Continue</button>
+                    <button id="retry-palm" class="btn btn-primary" data-i18n="palm.fail.retryBtn">重试捕获</button>
+                    <button id="continue-palm-anyway" class="btn btn-secondary" data-i18n="palm.fail.continueBtn">继续</button>
                 </div>
             </div>
         </div>
@@ -260,20 +237,20 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <span class="modal-icon">🎥</span>
-                    <h3 class="modal-title" data-i18n="consent.title">Video Recording Consent</h3>
+                    <h3 class="modal-title" data-i18n="consent.title">视频录制同意书</h3>
                 </div>
                 <div class="modal-body">
-                    <p data-i18n="consent.intro">This application will record video of each step for quality assurance and analysis purposes.</p>
-                    <p><strong data-i18n="consent.privacy">Your privacy:</strong></p>
+                    <p data-i18n="consent.intro">本应用将在每个步骤录制视频，用于质量保证和分析。</p>
+                    <p><strong data-i18n="consent.privacy">您的隐私：</strong></p>
                     <ul>
-                        <li data-i18n="consent.privacy1">Videos will be saved securely</li>
-                        <li data-i18n="consent.privacy2">Data is used only for analysis purposes</li>
+                        <li data-i18n="consent.privacy1">视频将被安全保存</li>
+                        <li data-i18n="consent.privacy2">数据仅用于分析目的</li>
                     </ul>
-                    <p class="consent-note"><strong>Note:</strong> <span data-i18n="consent.note">Video recording is required to proceed with the tracking session.</span></p>
+                    <p class="consent-note"><strong>注意：</strong> <span data-i18n="consent.note">进行跟踪会话需要录制视频。</span></p>
                 </div>
                 <div class="modal-actions">
-                    <button id="accept-recording-btn" class="btn btn-success" data-i18n="consent.accept">Accept & Continue</button>
-                    <button id="decline-recording-btn" class="btn btn-secondary" data-i18n="consent.decline">Decline</button>
+                    <button id="accept-recording-btn" class="btn btn-success" data-i18n="consent.accept">接受并继续</button>
+                    <button id="decline-recording-btn" class="btn btn-secondary" data-i18n="consent.decline">拒绝</button>
                 </div>
             </div>
         </div>
@@ -282,7 +259,7 @@
         <div id="ocr-analysis-overlay" class="ocr-analysis-overlay" style="display: none;">
             <div class="ocr-analysis-content">
                 <div class="ocr-spinner"></div>
-                <div class="ocr-analysis-text" data-i18n="ocr.analyzing">Analyzing product label...</div>
+                <div class="ocr-analysis-text" data-i18n="ocr.analyzing">正在分析产品标签...</div>
             </div>
         </div>
         
@@ -290,8 +267,8 @@
         <div id="upload-overlay" class="upload-overlay" style="display: none;">
             <div class="upload-content">
                 <div class="upload-spinner"></div>
-                <div class="upload-text" data-i18n="upload.uploading">Uploading session data...</div>
-                <div class="upload-progress" data-i18n="upload.wait">Please wait, do not close this window</div>
+                <div class="upload-text" data-i18n="upload.uploading">正在上传会话数据...</div>
+                <div class="upload-progress" data-i18n="upload.wait">请稍候，请勿关闭此窗口</div>
             </div>
         </div>
         
@@ -299,8 +276,8 @@
         <div id="download-overlay" class="upload-overlay" style="display: none;">
             <div class="upload-content">
                 <div class="upload-spinner"></div>
-                <div class="upload-text" data-i18n="download.generating">Generating zip file...</div>
-                <div class="upload-progress" data-i18n="download.wait">Please wait, preparing your download</div>
+                <div class="upload-text" data-i18n="download.generating">正在生成压缩文件...</div>
+                <div class="upload-progress" data-i18n="download.wait">请稍候，正在准备您的下载</div>
             </div>
         </div>
         
@@ -308,12 +285,12 @@
         <div id="completion-screen" class="completion-screen" style="display: none;">
             <div class="completion-content">
                 <div id="completion-icon" class="completion-icon"></div>
-                <h2 id="completion-title" class="completion-title">Upload Complete</h2>
+                <h2 id="completion-title" class="completion-title">上传完成</h2>
                 <p id="completion-message" class="completion-message"></p>
                 <div id="completion-details" class="completion-details"></div>
                 <div class="completion-actions">
-                    <button id="download-analysis-btn" class="btn btn-secondary" style="display: none;" data-i18n="completion.downloadBtn">Download Analysis</button>
-                    <button id="start-new-session-btn" class="btn btn-primary" data-i18n="completion.newSession">Start New Session</button>
+                    <button id="download-analysis-btn" class="btn btn-secondary" style="display: none;" data-i18n="completion.downloadBtn">下载分析</button>
+                    <button id="start-new-session-btn" class="btn btn-primary" data-i18n="completion.newSession">开始新会话</button>
                 </div>
             </div>
         </div>

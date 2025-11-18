@@ -118,7 +118,6 @@ export async function enableCamera() {
     }
 }
 
-
 // Video recording functions
 export function startStepRecording(stepNumber: number) {
     if (!videoStream || !recordingConsent) {
