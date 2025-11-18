@@ -337,6 +337,9 @@ export async function uploadAnalysisToServer(analysisData: any) {
             }
             
             const data = await response.json();
+            if (data.code !== 200) {
+                throw new Error(data.msg || `Server responded with code ${data.code}`);
+            }
             utils.addLog(`✅ Analysis submitted successfully to server!`, 'success');
             utils.updateResponse(data);
             
