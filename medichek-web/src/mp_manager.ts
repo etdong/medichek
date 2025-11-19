@@ -108,7 +108,7 @@ export function onFaceMeshResults(results: any) {
         }
 
         // Draw overlay on canvas
-        drawFaceMeshOverlay(faceMeshLandmarks);
+        // drawFaceMeshOverlay(faceMeshLandmarks);
     }
     
 }

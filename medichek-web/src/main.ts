@@ -147,9 +147,9 @@ function updateSessionUI() {
             });
             
             // Show holistic coverage percentage on separate line (informational only)
-            const coverageText = `${t('steps.faceRubbing.coverage')}: ${mp.faceRubbingState.totalCoverage}%`;
+            // const coverageText = `${t('steps.faceRubbing.coverage')}: ${mp.faceRubbingState.totalCoverage}%`;
             
-            stepProgress.innerHTML = `${regionProgress}<br>${coverageText}`;
+            stepProgress.innerHTML = `${regionProgress}`;
         }
     }
 }
@@ -394,32 +394,32 @@ async function submitAnalysis() {
         );
     } else if (!minioUploadSuccess && !analysisUploadSuccess) {
         // Both failed - show download button
-        utils.addLog('⚠️ Both MinIO and analysis uploads failed. Click download to save data locally', 'warning');
+        utils.addLog('⚠️ MinIO和分析数据上传均失败。请点击下载按钮保存数据到本地。', 'warning');
         ui.showCompletionScreen(
             false, 
-            'Upload Failed', 
-            'Both MinIO and analysis server uploads failed. Click the button below to download your files.',
-            '<p>⚠️ MinIO upload: Failed<br>⚠️ Analysis upload: Failed</p>',
+            '上传失败', 
+            'MinIO和分析服务器上传均失败。请点击下方按钮下载您的文件。',
+            '<p>⚠️ MinIO上传：失败<br>⚠️ 分析上传：失败</p>',
             true
         );
     } else if (!minioUploadSuccess) {
         // MinIO failed but analysis succeeded - show download button for recordings
-        utils.addLog('⚠️ MinIO upload failed but analysis submitted. Click download to save recordings locally', 'warning');
+        utils.addLog('⚠️ MinIO上传失败，但分析数据已提交。请点击下载按钮保存录制文件到本地。', 'warning');
         ui.showCompletionScreen(
             false, 
-            'Partial Upload Success', 
-            'Analysis was submitted but file uploads failed. Click the button below to download your files.',
-            '<p>⚠️ MinIO upload: Failed<br>✅ Analysis upload: Success</p>',
+            '部分上传成功', 
+            '分析数据已提交，但文件上传失败。请点击下方按钮下载您的文件。',
+            '<p>⚠️ MinIO上传：失败<br>✅ 分析上传：成功</p>',
             true
         );
     } else if (!analysisUploadSuccess) {
         // Analysis failed but MinIO succeeded - show download button
-        utils.addLog('⚠️ Analysis submission failed but MinIO upload succeeded. Click download to save data locally', 'warning');
+        utils.addLog('⚠️ 分析数据上传失败，但MinIO上传成功。请点击下载按钮保存数据到本地。', 'warning');
         ui.showCompletionScreen(
             false, 
-            'Partial Upload Success', 
-            'Files were uploaded but analysis submission failed. Click the button below to download your files.',
-            '<p>✅ MinIO upload: Success<br>⚠️ Analysis upload: Failed</p>',
+            '部分上传成功', 
+            '文件已上传，但分析数据提交失败。请点击下方按钮下载您的文件。',
+            '<p>✅ MinIO上传：成功<br>⚠️ 分析上传：失败</p>',
             true
         );
     }
@@ -478,7 +478,7 @@ let palmSkipped = false;
 
 async function performOCR(canvas: any) {
     try {
-        const worker = await Tesseract.createWorker();
+        const worker = await Tesseract.createWorker({ workerPath: './worker.min.js', corePath: './tesseract-core-simd.wasm.js', langPath: './tessdata' });
         await worker.loadLanguage('chi_sim');
         await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(canvas);
@@ -848,7 +848,7 @@ async function initializeApplication() {
 	// If both servers are online, proceed normally
 	if (serverOnline && minioOnline) {
 		ui.updateServerStatus('Connected');
-		ui.hideLoadingScreen();
+		DOM.loadingScreen.style.display = 'none';
 	} else {
 		// Show offline prompt
 		DOM.offlinePrompt.style.display = 'flex';

@@ -191,7 +191,7 @@ const translations: Record<string, Record<string, string>> = {
         'button.finish': '完成',
         
         // Steps
-        'steps.readyToBegin': '准备开始',
+        'steps.readyToBegin': '请按开始',
         'steps.preliminaries.title': '准备工作：摄像头和面部居中',
         'steps.preliminaries.activatingCamera': '激活摄像头中...',
         'steps.preliminaries.positionFace': '将您的脸部置于中心',

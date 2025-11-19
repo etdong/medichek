@@ -150,11 +150,3 @@ export function showReviewScreen() {
     
     utils.addLog('🎉 All steps completed! Review your session', 'success');
 }
-
-// Hide loading screen and start application
-export function hideLoadingScreen() {
-    DOM.loadingScreen.style.display = 'none';
-}
-
-
-

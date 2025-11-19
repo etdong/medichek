@@ -103,7 +103,7 @@ export function continueOffline() {
     offlineMode = true;
     ui.updateServerStatus('Disconnected');
     utils.addLog(t('loading.offlineModeLog'), 'warning');
-    ui.hideLoadingScreen();
+    DOM.loadingScreen.style.display = 'none';
 }
 
 // MinIO Upload Function
