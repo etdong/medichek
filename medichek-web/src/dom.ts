@@ -1,3 +1,7 @@
+// MediaPipe initializer statuses
+export const faceCheckStatus: HTMLElement = document.getElementById('face-check') as HTMLElement;
+export const handsCheckStatus: HTMLElement = document.getElementById('hands-check') as HTMLElement;
+export const meshCheckStatus: HTMLElement = document.getElementById('mesh-check') as HTMLElement;
 // DOM elements
 // Language selector
 export const languageSelectModal: HTMLElement = document.getElementById('language-select-modal') as HTMLElement;

@@ -350,7 +350,7 @@ export async function performAutoOcrScan(targetString: string): Promise<boolean>
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await Tesseract.createWorker();
+        const worker = await Tesseract.createWorker({ workerPath: './worker.min.js', corePath: './tesseract-core-simd.wasm.js', langPath: './tessdata' });
         await worker.loadLanguage('chi_sim');
         await worker.initialize('chi_sim');
         const { data: { text } } = await worker.recognize(captureCanvas);

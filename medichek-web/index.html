@@ -19,21 +19,6 @@
     </script>
 
     <script type="module" src="./src/main.ts"></script>
-    
-    <!-- MediaPipe Dependencies -->
-    <script src="./src/externs/control_utils.js" crossorigin="anonymous"></script>
-    <script src="./src/externs/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="./src/externs/face_detection.js" crossorigin="anonymous"></script>
-    <script src="./src/externs/vision_bundle.mjs" crossorigin="anonymous" type="module"></script>
-    
-    <!-- Tesseract.js for OCR -->
-    <script src='./src/externs/tesseract.min.js'></script>
-    
-    <!-- JSZip for creating zip files -->
-    <script src="./src/externs/jszip.min.js"></script>
-    
-    <!-- AWS SDK for S3 (MinIO compatible) -->
-    <script src="./src/externs/aws-sdk-2.1.24.min.js"></script>
 </head>
 <body>
     <!-- Loading Screen (hidden initially, shown after language selection) -->
@@ -48,8 +33,20 @@
                     <span id="server-check" class="check-status checking" data-i18n="loading.checking">正在检查...</span>
                 </div>
                 <div class="server-check-item">
-                    <span class="check-label" data-i18n="loading.minio">MinIO：</span>
+                    <span class="check-label" data-i18n="loading.minio">MinIO: </span>
                     <span id="minio-check" class="check-status checking" data-i18n="loading.checking">正在检查...</span>
+                </div>
+                <div class="server-check-item">
+                    <span class="check-label">人脸检测：</span>
+                    <span id="face-check" class="check-status checking">正在检查...</span>
+                </div>
+                <div class="server-check-item">
+                    <span class="check-label">手部检测：</span>
+                    <span id="hands-check" class="check-status checking">正在检查...</span>
+                </div>
+                <div class="server-check-item">
+                    <span class="check-label">人脸网格：</span>
+                    <span id="mesh-check" class="check-status checking">正在检查...</span>
                 </div>
             </div>
             <div id="offline-prompt" class="offline-prompt" style="display: none;">
@@ -121,7 +118,7 @@
             <!-- Step Status Container (fixed height wrapper) -->
             <div class="step-status-container">
                 <div class="step-status-overlay" id="step-status-overlay">
-                    <div id="step-instruction" class="step-instruction">准备开始</div>
+                    <div id="step-instruction" class="step-instruction">请按开始</div>
                     <div id="step-progress" class="step-progress"></div>
                 </div>
             </div>
