@@ -43,7 +43,7 @@ async function checkServer(): Promise<boolean> {
     return new Promise(async (resolve) => {
         resolve(true)
         try {
-            const response = await fetch(`${MedichekConfig.getServerUrl()}/prod-api/system/process/saveResult/`, {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}`, {
                 method: 'GET',
                 mode: 'cors',
                 headers: {
@@ -319,7 +319,7 @@ export async function uploadAnalysisToServer(analysisData: any) {
     }
 
     try {
-            const response = await fetch(`${MedichekConfig.getServerUrl()}/prod-api/system/process/saveResult/`, {
+            const response = await fetch(`${MedichekConfig.getServerUrl()}`, {
                 method: 'POST',
                 mode: 'cors',
                 headers: {

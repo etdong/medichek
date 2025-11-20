@@ -48,7 +48,7 @@ let autoOcrInterval: NodeJS.Timeout | null = null;
 const ocrTargetString = urlParams.get('product_number') || '1234567890';
 
 
-const vision = await FilesetResolver.forVisionTasks("./src/externs");
+const vision = await FilesetResolver.forVisionTasks(".");
 
 //#endregion
 
@@ -626,14 +626,6 @@ DOM.acceptRecordingBtn.addEventListener('click', async () => {
 
 		if (cameraEnabled) {
 			utils.addLog('✅ Camera access granted', 'success');
-			// Initialize MediaPipe Face Detection
-			await initializeFaceDetection();
-			
-			// Initialize MediaPipe Hands Detection
-			await initializeHandsDetection();
-			
-			// Initialize MediaPipe Face Mesh (for Step 3)
-			await initializeFaceMesh();
 			
 			// Start camera processing with MediaPipe
 			let lastVideoTime = -1;
@@ -821,38 +813,63 @@ DOM.downloadAnalysisBtn.addEventListener('click', async () => {
 
 // Initialize
 async function initializeApplication() {
-	// Check Server
-	DOM.serverCheckStatus.textContent = t('loading.checking');
-	DOM.serverCheckStatus.className = 'check-status checking';
-	DOM.minioCheckStatus.textContent = t('loading.checking');
-	DOM.minioCheckStatus.className = 'check-status checking';
+	// General initializing screen with status for each subsystem
+    DOM.loadingScreen.style.display = 'flex';
+    // Add new status elements for MediaPipe initializers
+    const statusMap = {
+        server: { el: DOM.serverCheckStatus, label: t('loading.server'), status: 'checking' },
+        minio: { el: DOM.minioCheckStatus, label: t('loading.minio'), status: 'checking' },
+        face: { el: DOM.faceCheckStatus, label: 'Face Detection', status: 'checking' },
+        hands: { el: DOM.handsCheckStatus, label: 'Hands Detection', status: 'checking' },
+        mesh: { el: DOM.meshCheckStatus, label: 'Face Mesh', status: 'checking' }
+    };
 
+    // Set all to checking
+    Object.values(statusMap).forEach(({ el }) => {
+        el.textContent = t('loading.checking');
+        el.className = 'check-status checking';
+    });
+
+    // Server checks
     const { serverOnline, minioOnline } = await server.checkServers();
+    statusMap.server.el.textContent = serverOnline ? t('loading.online') : t('loading.offline');
+    statusMap.server.el.className = serverOnline ? 'check-status online' : 'check-status offline';
+    statusMap.minio.el.textContent = minioOnline ? t('loading.online') : t('loading.offline');
+    statusMap.minio.el.className = minioOnline ? 'check-status online' : 'check-status offline';
 
-	if (serverOnline) {
-		DOM.serverCheckStatus.textContent = t('loading.online');
-		DOM.serverCheckStatus.className = 'check-status online';
-	} else {
-		DOM.serverCheckStatus.textContent = t('loading.offline');
-		DOM.serverCheckStatus.className = 'check-status offline';
-	}
-	
-	if (minioOnline) {
-		DOM.minioCheckStatus.textContent = t('loading.online');
-		DOM.minioCheckStatus.className = 'check-status online';
-	} else {
-		DOM.minioCheckStatus.textContent = t('loading.offline');
-		DOM.minioCheckStatus.className = 'check-status offline';
-	}
-	
-	// If both servers are online, proceed normally
-	if (serverOnline && minioOnline) {
-		ui.updateServerStatus('Connected');
-		DOM.loadingScreen.style.display = 'none';
-	} else {
-		// Show offline prompt
-		DOM.offlinePrompt.style.display = 'flex';
-	}
+    // MediaPipe initializers
+    try {
+        await initializeFaceDetection();
+        statusMap.face.el.textContent = '已初始化';
+        statusMap.face.el.className = 'check-status online';
+    } catch {
+        statusMap.face.el.textContent = '失败';
+        statusMap.face.el.className = 'check-status offline';
+    }
+    try {
+        await initializeHandsDetection();
+        statusMap.hands.el.textContent = '已初始化';
+        statusMap.hands.el.className = 'check-status online';
+    } catch {
+        statusMap.hands.el.textContent = '失败';
+        statusMap.hands.el.className = 'check-status offline';
+    }
+    try {
+        await initializeFaceMesh();
+        statusMap.mesh.el.textContent = '已初始化';
+        statusMap.mesh.el.className = 'check-status online';
+    } catch {
+        statusMap.mesh.el.textContent = '失败';
+        statusMap.mesh.el.className = 'check-status offline';
+    }
+
+    // Hide loading screen and show offline prompt only if server or minio failed
+    if (serverOnline && minioOnline) {
+        ui.updateServerStatus('Connected');
+        DOM.loadingScreen.style.display = 'none';
+    } else {
+        DOM.offlinePrompt.style.display = 'flex';
+    }
     updateSessionUI();
 }
 
@@ -862,7 +879,7 @@ async function initializeFaceDetection() {
     
     faceDetector = await FaceDetector.createFromOptions(vision, {
         baseOptions: {
-            modelAssetPath: './src/externs/blaze_face_short_range.tflite',
+            modelAssetPath: './blaze_face_short_range.tflite',
             delegate: 'GPU'
         },
         runningMode: 'VIDEO',
@@ -878,7 +895,7 @@ async function initializeHandsDetection() {
     
     handLandmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
-            modelAssetPath: './src/externs/hand_landmarker.task',
+            modelAssetPath: './hand_landmarker.task',
             delegate: 'GPU'
         },
         runningMode: 'VIDEO',
@@ -897,7 +914,7 @@ async function initializeFaceMesh() {
     
     faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
-            modelAssetPath: './src/externs/face_landmarker.task',
+            modelAssetPath: './face_landmarker.task',
             delegate: 'GPU'
         },
         runningMode: 'VIDEO',
