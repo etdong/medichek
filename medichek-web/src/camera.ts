@@ -326,7 +326,7 @@ export function resetCapturedFrame() {
     DOM.capturedFrameArea.classList.add('empty');
 }
 
-export async function performAutoOcrScan(targetString: string): Promise<boolean> {
+export async function performAutoOcrScan(targetString: string, worker: Tesseract.Worker | null): Promise<boolean> {
     if (!DOM.webcam) return false;
     
     // Calculate capture area dimensions
@@ -350,15 +350,10 @@ export async function performAutoOcrScan(targetString: string): Promise<boolean>
     
     // Perform OCR on the captured area (silent - no UI updates)
     try {
-        const worker = await Tesseract.createWorker({ workerPath: './worker.min.js', corePath: './tesseract-core-simd.wasm.js', langPath: './tessdata' });
-        await worker.loadLanguage('chi_sim');
-        await worker.initialize('chi_sim');
+        if (!worker) return false;
         const { data: { text } } = await worker.recognize(captureCanvas);
-        await worker.terminate();
-        
         // Check if at least 50% of the target Chinese characters are in the recognized text
         const recognizedText = text;
-        
         if (recognizedText.includes(targetString)) {
             // Store the captured frame
             await new Promise<void>(resolve => {

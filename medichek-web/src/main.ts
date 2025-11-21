@@ -47,6 +47,7 @@ let faceLandmarker: FaceLandmarker | null = null;
 let autoOcrInterval: NodeJS.Timeout | null = null;
 const ocrTargetString = urlParams.get('product_number') || '1234567890';
 
+let ocrWorker: Tesseract.Worker | null = null;
 
 const vision = await FilesetResolver.forVisionTasks(".");
 
@@ -271,6 +272,12 @@ function nextStep() {
     analysisSession.currentStep++;
     utils.addLog(`📍 Moving to step ${analysisSession.currentStep}/${analysisSession.totalSteps}`);
     
+    // Terminate OCR worker after leaving step 1
+    if (analysisSession.currentStep === 2 && ocrWorker) {
+        ocrWorker.terminate();
+        ocrWorker = null;
+    }
+
     // Start auto-scanning when entering step 1 (OCR)
     if (analysisSession.currentStep === 1) {
         startAutoOcrScanning();
@@ -426,39 +433,28 @@ async function submitAnalysis() {
 }
 
 // Auto-scanning OCR functionality
-function startAutoOcrScanning() {
-    if (autoOcrInterval) return; // Already running
-    
-    // Scan every second
+async function startAutoOcrScanning() {
+    // Scan every second using global ocrWorker
     autoOcrInterval = setInterval(async () => {
         if (analysisSession.currentStep !== 1 || ocrRecognized || ocrSkipped) {
             stopAutoOcrScanning();
             return;
         }
-        
-        const res = await cam.performAutoOcrScan(ocrTargetString);
-
+        const res = await cam.performAutoOcrScan(ocrTargetString, ocrWorker);
         if (res) {
             stopAutoOcrScanning();
-            clearInterval(autoOcrInterval!);
             // Mark as recognized
             ocrRecognized = true;
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';
-            
             utils.addLog('✅ Product label recognized!', 'success');
-            
-            // Update UI
             updateSessionUI();
-            
-            // Auto-advance after short delay
             setTimeout(() => {
                 nextStep();
             }, 1500);
         }
     }, 500);
-    
     utils.addLog('🔍 Auto-scanning for product label...', 'info');
 }
 
@@ -478,34 +474,19 @@ let palmSkipped = false;
 
 async function performOCR(canvas: any) {
     try {
-        const worker = await Tesseract.createWorker({ workerPath: './worker.min.js', corePath: './tesseract-core-simd.wasm.js', langPath: './tessdata' });
-        await worker.loadLanguage('chi_sim');
-        await worker.initialize('chi_sim');
-        const { data: { text } } = await worker.recognize(canvas);
-        await worker.terminate();
-        
+        if (!ocrWorker) throw new Error('OCR worker not initialized');
+        const { data: { text } } = await ocrWorker.recognize(canvas);
         utils.addLog(`📄 OCR Text: ${text.trim()}`, 'info');
-        
-        // Check if the target string is present in the recognized text
         const recognizedText = text;
         const targetString = ocrTargetString;
-
         if (recognizedText.includes(targetString)) {
             ocrRecognized = true;
             utils.addLog('✅ Product label recognized!', 'success');
-
-            // Update compact display - only show success status
             DOM.ocrStatusBadge.textContent = t('frame.ocrRecognized');
             DOM.ocrStatusBadge.className = 'ocr-status success';
             DOM.ocrResultCompact.innerHTML = '';
-
-            // Hide OCR analysis overlay
             DOM.ocrAnalysisOverlay.style.display = 'none';
-
-            // Update button state
             updateSessionUI();
-
-            // Auto-advance to next step after a short delay
             utils.addLog('⏭️ Auto-advancing to next step...', 'info');
             setTimeout(() => {
                 nextStep();
@@ -513,28 +494,17 @@ async function performOCR(canvas: any) {
         } else {
             ocrRecognized = false;
             utils.addLog('❌ Product label not found in image. Try again.', 'error');
-
-            // Update compact display - only show failed status
             DOM.ocrStatusBadge.textContent = t('frame.ocrNotFound');
             DOM.ocrStatusBadge.className = 'ocr-status failed';
             DOM.ocrResultCompact.innerHTML = '';
-
-            // Hide OCR analysis overlay
             DOM.ocrAnalysisOverlay.style.display = 'none';
-
-            // Show the modal for OCR failure
             DOM.ocrFailModal.style.display = 'flex';
         }
-        
     } catch (err: any) {
         utils.addLog('❌ OCR failed: ' + err.message, 'error');
-        
-        // Update compact display - only show error status
         DOM.ocrStatusBadge.textContent = t('frame.ocrError');
         DOM.ocrStatusBadge.className = 'ocr-status failed';
-        DOM.ocrResultCompact.innerHTML = '';  // No detailed error message
-        
-        // Hide OCR analysis overlay
+        DOM.ocrResultCompact.innerHTML = '';
         DOM.ocrAnalysisOverlay.style.display = 'none';
     }
 }
@@ -837,6 +807,15 @@ async function initializeApplication() {
     statusMap.minio.el.textContent = minioOnline ? t('loading.online') : t('loading.offline');
     statusMap.minio.el.className = minioOnline ? 'check-status online' : 'check-status offline';
 
+    // Initialize Tesseract worker globally
+    try {
+        ocrWorker = await Tesseract.createWorker({ workerPath: './worker.min.js', corePath: './tesseract-core-simd.wasm.js', langPath: './tessdata' });
+        await ocrWorker.loadLanguage('chi_sim');
+        await ocrWorker.initialize('chi_sim');
+    } catch {
+        utils.addLog('❌ Failed to initialize OCR worker', 'error');
+    }
+
     // MediaPipe initializers
     try {
         await initializeFaceDetection();
@@ -928,5 +907,3 @@ async function initializeFaceMesh() {
     
     utils.addLog('✅ Face mesh initialized', 'success');
 }
-
-
