@@ -4,13 +4,15 @@ import { t } from './translations.js';
 import Tesseract from 'tesseract.js';
 
 let videoStream: MediaStream | null = null;
-let currentFacingMode: 'user' | 'environment' = 'user';
+export let currentFacingMode: 'user' | 'environment' = 'user';
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: Blob[] = [];
 let currentStepRecording: number = 0;
 let camera = null;
 let videoDevices: string | any[] | null = null;
 let deviceIndex: number = 0;
+let backCam: { deviceId: any; } | null = null;
+let frontCam: { deviceId: any; } | null = null;
 
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
@@ -74,7 +76,12 @@ export async function acceptRecordingConsent(session_id: string) {
     const devices = await navigator.mediaDevices.enumerateDevices();
     videoDevices = devices.filter((d) => d.kind === "videoinput");
 
-    utils.addLog(`📷 Found ${videoDevices.length} video input device(s)`, 'info');
+    console.log(videoDevices)
+
+    if (videoDevices.length > 1) {
+        backCam = videoDevices.find((d) => d.label.toLowerCase().includes('back') && d.label.includes('0')) || null;
+        frontCam = videoDevices.find((d) => d.label.toLowerCase().includes('front')) || null;
+    }
 
     return analysisSession;
 }
@@ -103,11 +110,15 @@ export async function enableCamera(deviceId: string | null = null) {
     ? {
         video: {
           facingMode: currentFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 1280 }
         },
         audio: false,
       }
     : {
-        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        video: deviceId ? { 
+            deviceId: { exact: deviceId },
+        } : true,
         audio: false,
       };
     
@@ -121,6 +132,12 @@ export async function enableCamera(deviceId: string | null = null) {
         await new Promise<void>((resolve) => {
             DOM.webcam.onloadedmetadata = () => {
                 DOM.webcam.play();
+                // Only mirror for front camera
+                if (currentFacingMode === 'user') {
+                    DOM.canvas.style.transform = 'scaleX(-1)';
+                } else {
+                    DOM.canvas.style.transform = 'none';
+                }
                 resolve();
             };
         });
@@ -148,7 +165,21 @@ export async function flipCamera() {
         return;
     }
 
+    if (backCam && frontCam) {
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        const deviceId = currentFacingMode === 'environment' ? backCam.deviceId : frontCam.deviceId;
+        await enableCamera(deviceId);
+        return;
+    }
+
     deviceIndex = (deviceIndex + 1) % videoDevices!.length;
+    const device = videoDevices![deviceIndex];    
+    if (device.label.includes('back')) {
+        currentFacingMode = 'environment';
+        await enableCamera(videoDevices![deviceIndex].deviceId);
+    } else {
+        currentFacingMode = 'user';
+    }
     await enableCamera(videoDevices![deviceIndex].deviceId);
 }
 

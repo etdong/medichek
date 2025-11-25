@@ -440,16 +440,16 @@ export function onStep2HandsDetectionResults(results: any) {
         if (handedness === 'Left') {
             // Left hand in world coordinates; palm faces camera when thumb is to the right of pinky (in mirror)
             if (fingersDown) {
-                palmFacing = thumbTip.x > pinkyBase.x;
+                palmFacing = cam.currentFacingMode === 'user' ? thumbTip.x > pinkyBase.x : thumbTip.x < pinkyBase.x;
             } else {
-                palmFacing = thumbTip.x < pinkyBase.x;
+                palmFacing = cam.currentFacingMode === 'user' ? thumbTip.x < pinkyBase.x : thumbTip.x > pinkyBase.x;
             }
         } else if (handedness === 'Right') {
             // Right hand in world coordinates; palm faces camera when thumb is to the left of pinky (in mirror)
             if (fingersDown) {
-                palmFacing = thumbTip.x < pinkyBase.x;
-            } else { 
-                palmFacing = thumbTip.x > pinkyBase.x;
+                palmFacing = cam.currentFacingMode === 'user' ? thumbTip.x < pinkyBase.x : thumbTip.x > pinkyBase.x;
+            } else {
+                palmFacing = cam.currentFacingMode === 'user' ? thumbTip.x > pinkyBase.x : thumbTip.x < pinkyBase.x;
             }
         } else {
             // If handedness detection fails, use a heuristic

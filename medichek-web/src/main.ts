@@ -524,13 +524,19 @@ function restartSession() {
 
 //#region Event listeners
 
-addEventListener('load', () => {
-    // Check if language is already set
-    // Show language selection modal and hide loading screen
-    DOM.loadingScreen.style.display = 'flex';
+DOM.loadingScreen.style.display = 'flex';
+if (document.readyState === 'complete') {
     initializeApplication();
     updateLanguage('zh');
-});
+} else {
+    addEventListener('load', () => {
+        // Check if language is already set
+        // Show language selection modal and hide loading screen
+        initializeApplication();
+        updateLanguage('zh');
+    });
+}
+
 
 // Event listeners for language selection modal
 // Language selector event listeners
