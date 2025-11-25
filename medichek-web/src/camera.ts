@@ -4,10 +4,15 @@ import { t } from './translations.js';
 import Tesseract from 'tesseract.js';
 
 let videoStream: MediaStream | null = null;
+let currentFacingMode: 'user' | 'environment' = 'user';
 let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: Blob[] = [];
 let currentStepRecording: number = 0;
 let camera = null;
+let videoDevices: string | any[] | null = null;
+let deviceIndex: number = 0;
+
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 export let currentPalmStatus: string = 'null'; // 'captured' or null
 
@@ -66,6 +71,11 @@ export async function acceptRecordingConsent(session_id: string) {
         }
     };
 
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter((d) => d.kind === "videoinput");
+
+    utils.addLog(`📷 Found ${videoDevices.length} video input device(s)`, 'info');
+
     return analysisSession;
 }
 
@@ -79,23 +89,31 @@ export function declineRecordingConsent() {
 }
 
 // Camera management
-export async function enableCamera() {
+export async function enableCamera(deviceId: string | null = null) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         utils.addLog('❌ Camera not supported in this browser', 'error');
         return false;
     }
+
+    if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+    }
+
+    const constraints = isIOS
+    ? {
+        video: {
+          facingMode: currentFacingMode,
+        },
+        audio: false,
+      }
+    : {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      };
     
     try {
-        utils.addLog('📹 Requesting camera access...', 'info');
         
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user'
-            } 
-        });
-        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         DOM.webcam.srcObject = stream;
         videoStream = stream;
         
@@ -106,7 +124,8 @@ export async function enableCamera() {
                 resolve();
             };
         });
-        
+        utils.addLog(`📹 Camera stream started (facing: ${currentFacingMode})`, 'info');
+        utils.addLog(`📹 Device ID: ${deviceId}`, 'success');
         utils.addLog('📹 Camera enabled successfully!', 'success');
         
         return true;
@@ -116,6 +135,21 @@ export async function enableCamera() {
         return false;
         
     }
+}
+
+export async function flipCamera() {
+    if (videoDevices!.length <= 1) {
+        if (isIOS) {
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            await enableCamera();
+        } else {
+            alert("No other camera available.");
+        }
+        return;
+    }
+
+    deviceIndex = (deviceIndex + 1) % videoDevices!.length;
+    await enableCamera(videoDevices![deviceIndex].deviceId);
 }
 
 // Video recording functions

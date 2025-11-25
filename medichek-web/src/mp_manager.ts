@@ -436,13 +436,21 @@ export function onStep2HandsDetectionResults(results: any) {
         // - "Left" hand (user's actual left): thumb appears on RIGHT side in mirror (thumb.x > pinky.x)
         // - "Right" hand (user's actual right): thumb appears on LEFT side in mirror (thumb.x < pinky.x)
         let palmFacing = false;
-        
+
         if (handedness === 'Left') {
             // Left hand in world coordinates; palm faces camera when thumb is to the right of pinky (in mirror)
-            palmFacing = thumbTip.x > pinkyBase.x;
+            if (fingersDown) {
+                palmFacing = thumbTip.x > pinkyBase.x;
+            } else {
+                palmFacing = thumbTip.x < pinkyBase.x;
+            }
         } else if (handedness === 'Right') {
             // Right hand in world coordinates; palm faces camera when thumb is to the left of pinky (in mirror)
-            palmFacing = thumbTip.x < pinkyBase.x;
+            if (fingersDown) {
+                palmFacing = thumbTip.x < pinkyBase.x;
+            } else { 
+                palmFacing = thumbTip.x > pinkyBase.x;
+            }
         } else {
             // If handedness detection fails, use a heuristic
             // Palm facing typically has thumb separated from other fingers
@@ -450,12 +458,13 @@ export function onStep2HandsDetectionResults(results: any) {
             palmFacing = thumbSeparated;
         }
         
+        
         // Check hand is relatively upright (not tilted too much)
         const handWidth = Math.abs(indexBase.x - pinkyBase.x);
         const handHeight = Math.abs(middleFingerTip.y - wrist.y);
         const palmUpright = handHeight > handWidth * 0.5;
         
-        palmUp = fingersDown && palmFacing && palmUpright;
+        palmUp = palmFacing && palmUpright;
         
         // Check if entire hand is within the canvas bounds (accounting for square crop)
         // The canvas is square (aspect-ratio: 1/1) but video may be wider

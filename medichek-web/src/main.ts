@@ -62,6 +62,7 @@ function updateSessionUI() {
     DOM.nextStepBtn.style.display = 'none';
     DOM.captureFrameBtn.style.display = 'none';
     DOM.finishSessionBtn.style.display = 'none';
+    DOM.flipCameraBtn.style.display = 'none';
     
     // Update step instruction overlay
     const stepInstruction = document.getElementById('step-instruction');
@@ -76,6 +77,7 @@ function updateSessionUI() {
     } else if (analysisSession.currentStep === 0) {
         // Step 0: Preliminaries (camera + face centering)
         DOM.nextStepBtn.style.display = 'block';
+        DOM.flipCameraBtn.style.display = 'block';
         DOM.nextStepBtn.disabled = !cameraEnabled || !mp.faceCentered;
         if (stepInstruction) stepInstruction.textContent = t('steps.preliminaries.title');
         if (stepProgress) {
@@ -90,6 +92,7 @@ function updateSessionUI() {
     } else if (analysisSession.currentStep === 1) {
         // Step 1: OCR capture with auto-scanning
         DOM.captureFrameBtn.style.display = 'block';
+        DOM.flipCameraBtn.style.display = 'block';
         
         if (stepInstruction) stepInstruction.textContent = t('steps.ocr.title');
         if (stepProgress) {
@@ -104,6 +107,7 @@ function updateSessionUI() {
     } else if (analysisSession.currentStep === 2) {
         // Step 2: Palm detection (auto-advance, no next button)
         DOM.captureFrameBtn.style.display = 'block';
+        DOM.flipCameraBtn.style.display = 'block';
         if (stepInstruction) stepInstruction.textContent = t('steps.palm.title');
         if (stepProgress) {
             if (mp.palmDetectionState.completed) {
@@ -550,6 +554,10 @@ DOM.retryConnectionBtn.addEventListener('click', async () => {
 });
 
 DOM.startTrackingBtn.addEventListener('click', cam.startTracking);
+
+DOM.flipCameraBtn.addEventListener('click', async () => {
+    await cam.flipCamera();
+});
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks

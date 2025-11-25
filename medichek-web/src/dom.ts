@@ -26,6 +26,7 @@ export const startTrackingBtn: HTMLButtonElement = document.getElementById('star
 export const captureFrameBtn: HTMLButtonElement = document.getElementById('capture-frame') as HTMLButtonElement;
 export const nextStepBtn: HTMLButtonElement = document.getElementById('next-step') as HTMLButtonElement;
 export const finishSessionBtn: HTMLButtonElement = document.getElementById('finish-session') as HTMLButtonElement;
+export const flipCameraBtn: HTMLButtonElement = document.getElementById('flip-camera') as HTMLButtonElement;
 
 // Review/Finish screen elements
 export const reviewScreen: HTMLElement = document.getElementById('review-screen') as HTMLElement;

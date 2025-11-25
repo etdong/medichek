@@ -41,6 +41,7 @@ const translations: Record<string, Record<string, string>> = {
         'button.nextStep': 'Next Step',
         'button.manualCapture': 'Manual Capture',
         'button.finish': 'Finish',
+        'button.flipCamera': 'Flip Camera',
         
         // Steps
         'steps.readyToBegin': 'Ready to begin',
@@ -189,6 +190,7 @@ const translations: Record<string, Record<string, string>> = {
         'button.nextStep': '下一步',
         'button.manualCapture': '手动拍摄',
         'button.finish': '完成',
+        'button.flipCamera': '切换摄像头',
         
         // Steps
         'steps.readyToBegin': '请按开始',
