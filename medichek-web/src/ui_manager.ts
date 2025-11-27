@@ -1,8 +1,6 @@
 import { t } from './translations.js';
 import * as DOM from './dom.js';
 import * as utils from './utils.js';
-import * as cam from './camera.js';
-import * as server from './server_manager.js';
 
 let toastTimeout: NodeJS.Timeout | null = null;
 let handBoundsWarningTimeout: NodeJS.Timeout | null = null;
@@ -121,32 +119,4 @@ export function showCompletionScreen(success: boolean, title: string, message: s
     
     // Show completion screen
     DOM.completionScreen.style.display = 'flex';
-}
-
-// Show review/finish screen
-export function showReviewScreen() {
-    // Stop recording if still active
-    if (cam.recordingConsent) {
-        cam.stopStepRecording();
-        utils.addLog('🎥 All recordings completed', 'success');
-    }
-    
-    // Update review screen status
-    DOM.reviewOcrStatus.textContent = t('review.completed');
-    DOM.reviewPalmStatus.textContent = t('review.completed');
-    DOM.reviewFaceStatus.textContent = t('review.completed');
-    
-    // Update submit button text based on offline mode
-    if (server.offlineMode) {
-        DOM.submitAnalysisBtn.textContent = t('review.download');
-        DOM.submitAnalysisBtn.className = 'btn btn-primary';
-    } else {
-        DOM.submitAnalysisBtn.textContent = t('review.submit');
-        DOM.submitAnalysisBtn.className = 'btn btn-success';
-    }
-    
-    // Show review screen
-    DOM.reviewScreen.style.display = 'flex';
-    
-    utils.addLog('🎉 All steps completed! Review your session', 'success');
 }

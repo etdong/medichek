@@ -28,11 +28,6 @@ export const nextStepBtn: HTMLButtonElement = document.getElementById('next-step
 export const finishSessionBtn: HTMLButtonElement = document.getElementById('finish-session') as HTMLButtonElement;
 export const flipCameraBtn: HTMLButtonElement = document.getElementById('flip-camera') as HTMLButtonElement;
 
-// Review/Finish screen elements
-export const reviewScreen: HTMLElement = document.getElementById('review-screen') as HTMLElement;
-export const submitAnalysisBtn: HTMLButtonElement = document.getElementById('submit-analysis-btn') as HTMLButtonElement;
-export const restartSessionBtn: HTMLButtonElement = document.getElementById('restart-session-btn') as HTMLButtonElement;
-
 // Modal elements
 export const ocrFailModal: HTMLElement = document.getElementById('ocr-fail-modal') as HTMLElement;
 export const retryOcrBtn: HTMLButtonElement = document.getElementById('retry-ocr') as HTMLButtonElement;

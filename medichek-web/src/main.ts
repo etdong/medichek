@@ -18,7 +18,8 @@ const urlParams = new URLSearchParams(queryString);
 // Global state - Client-side only, no server sessions
 let analysisSession = {
     sessionId: urlParams.get('process_id') || '00000000',
-    startTime: Date.now(),
+    operatePart: urlParams.get('operate_part') || '0',
+    startTime: 0,
     currentStep: 0,
     totalSteps: 3,  // Only tracking OCR, Palm Detection, and Face Rubbing
     isActive: false,
@@ -127,15 +128,15 @@ function updateSessionUI() {
         }
     } else if (analysisSession.currentStep === 3) {
         // Step 3: Face rubbing (time-based only, coverage is for visualization)
-        const allAreasRubbed = mp.faceRubbingState.forehead.rubbed && 
-                               mp.faceRubbingState.leftSide.rubbed && 
-                               mp.faceRubbingState.rightSide.rubbed;
+        const allAreasRubbed = analysisSession.operatePart === '1' ? 
+            mp.faceRubbingState.leftSide.rubbed && mp.faceRubbingState.rightSide.rubbed : mp.faceRubbingState.forehead.rubbed;
         
         DOM.finishSessionBtn.style.display = 'block';
         DOM.finishSessionBtn.disabled = !allAreasRubbed; // Only require time-based completion
 
         if (stepInstruction) stepInstruction.textContent = t('steps.faceRubbing.title');
         if (stepProgress) {
+            
             const foreheadPercent = Math.min(100, Math.round((mp.faceRubbingState.forehead.totalTime / mp.RUBBING_DURATION_REQUIRED) * 100));
             const leftPercent = Math.min(100, Math.round((mp.faceRubbingState.leftSide.totalTime / mp.RUBBING_DURATION_REQUIRED) * 100));
             const rightPercent = Math.min(100, Math.round((mp.faceRubbingState.rightSide.totalTime / mp.RUBBING_DURATION_REQUIRED) * 100));
@@ -144,16 +145,16 @@ function updateSessionUI() {
             const foreheadStatus = mp.faceRubbingState.forehead.rubbed ? '✓' : foreheadPercent + '%';
             const leftStatus = mp.faceRubbingState.leftSide.rubbed ? '✓' : leftPercent + '%';
             const rightStatus = mp.faceRubbingState.rightSide.rubbed ? '✓' : rightPercent + '%';
-            
-            const regionProgress = t('steps.faceRubbing.progress', {
-                forehead: foreheadStatus,
+
+            const regionProgress = analysisSession.operatePart === '1' ? t('steps.cheekRubbing.progress', {
                 left: leftStatus,
                 right: rightStatus
-            });
+            }) : t('steps.foreheadRubbing.progress',{
+                forehead: foreheadStatus,
+            })
             
             // Show holistic coverage percentage on separate line (informational only)
             // const coverageText = `${t('steps.faceRubbing.coverage')}: ${mp.faceRubbingState.totalCoverage}%`;
-            
             stepProgress.innerHTML = `${regionProgress}`;
         }
     }
@@ -233,9 +234,8 @@ function nextStep() {
     
     // Step 3 (Face Rubbing) requires all three face areas to be rubbed
     if (analysisSession.currentStep === 3) {
-        const allAreasRubbed = mp.faceRubbingState.forehead.rubbed && 
-                               mp.faceRubbingState.leftSide.rubbed && 
-                               mp.faceRubbingState.rightSide.rubbed;
+        const allAreasRubbed = analysisSession.operatePart === '1' ? 
+            mp.faceRubbingState.leftSide.rubbed && mp.faceRubbingState.rightSide.rubbed : mp.faceRubbingState.forehead.rubbed;
         if (!allAreasRubbed) {
             utils.addLog('⚠️ Please rub all three face areas (forehead, left, right) for 5 seconds each', 'warning');
             return;
@@ -243,15 +243,15 @@ function nextStep() {
     }
     
     // End timing for current step (only if we're past preliminaries)
-        const currentTime = Date.now();
-        if (analysisSession.currentStep > 0) {
-            const stepKey = `step${analysisSession.currentStep}` as keyof typeof analysisSession.stepTimings;
-            const stepTiming = analysisSession.stepTimings[stepKey];
-            if (stepTiming) {
-                stepTiming.endTime = currentTime;
-                stepTiming.duration = (currentTime - stepTiming.startTime) / 1000; // in seconds
-            }
+    const currentTime = Date.now();
+    if (analysisSession.currentStep > 0) {
+        const stepKey = `step${analysisSession.currentStep}` as keyof typeof analysisSession.stepTimings;
+        const stepTiming = analysisSession.stepTimings[stepKey];
+        if (stepTiming) {
+            stepTiming.endTime = currentTime;
+            stepTiming.duration = (currentTime - stepTiming.startTime) / 1000; // in seconds
         }
+    }
     
     // Stop recording for current step (only if we're past preliminaries)
     if (cam.recordingConsent && analysisSession.currentStep > 0) {
@@ -293,6 +293,7 @@ function nextStep() {
     // Reset step-specific states when entering a new step
     if (analysisSession.currentStep === 2) {
         DOM.captureFrameBtn.disabled = false;
+        DOM.flipCameraBtn.disabled = false;
         // Reset palm detection state when entering step 2 (palm detection)
         mp.palmDetectionState.detected = false;
         mp.palmDetectionState.startTime = 0;
@@ -338,15 +339,9 @@ async function submitAnalysis() {
         utils.addLog('⚠️ No active tracking session', 'warning');
         return;
     }
-    
-    // Hide review screen
-    DOM.reviewScreen.style.display = 'none';
-    
-    // Disable submit button to prevent duplicate submissions
-    DOM.submitAnalysisBtn.disabled = true;
 
     const analysisData = createAnalysisData();
-    
+
     // If in offline mode, download instead of upload
     if (server.offlineMode) {
         utils.addLog('💾 Offline mode: Downloading analysis data locally...', 'info');
@@ -513,15 +508,6 @@ async function performOCR(canvas: any) {
     }
 }
 
-// Restart session from review screen
-function restartSession() {
-    // Hide review screen
-    DOM.reviewScreen.style.display = 'none';
-    
-    // Reset everything
-    location.reload();
-}
-
 //#region Event listeners
 
 DOM.loadingScreen.style.display = 'flex';
@@ -536,7 +522,6 @@ if (document.readyState === 'complete') {
         updateLanguage('zh');
     });
 }
-
 
 // Event listeners for language selection modal
 // Language selector event listeners
@@ -567,6 +552,7 @@ DOM.flipCameraBtn.addEventListener('click', async () => {
 
 DOM.captureFrameBtn.addEventListener('click', async () => {
     DOM.captureFrameBtn.disabled = true; // Prevent multiple clicks
+    DOM.flipCameraBtn.disabled = true;
     if (analysisSession.currentStep == 1) {
         stopAutoOcrScanning();
         performOCR(await cam.captureFrame(1));
@@ -589,17 +575,20 @@ DOM.finishSessionBtn.addEventListener('click', () => {
         analysisSession.stepTimings.step3.duration = 
             (currentTime - analysisSession.stepTimings.step3.startTime) / 1000;
     }
-    ui.showReviewScreen();
+    if (cam.recordingConsent) {
+        cam.stopStepRecording();
+        utils.addLog('🎥 All recordings completed', 'success');
+    }
+    submitAnalysis();
 });
-
-DOM.submitAnalysisBtn.addEventListener('click', submitAnalysis);
-DOM.restartSessionBtn.addEventListener('click', restartSession);
 
 // Modal event handlers
 DOM.acceptRecordingBtn.addEventListener('click', async () => {
     try {
         // Wait for the promise to resolve so analysisSession gets the actual object
-        analysisSession = await cam.acceptRecordingConsent(analysisSession.sessionId);
+        cam.acceptRecordingConsent();
+        analysisSession.isActive = true;
+        analysisSession.startTime = Date.now();
         updateSessionUI();
         utils.addLog(`✅ Tracking session started: ${analysisSession.sessionId}`, 'success');
         utils.addLog('📊 All tracking is performed locally on this device', 'info');
@@ -668,7 +657,7 @@ DOM.acceptRecordingBtn.addEventListener('click', async () => {
 							const faceResults = faceLandmarker.detectForVideo(DOM.webcam, currentTime);
 							
 							// Process results
-							mp.onFaceMeshResults(faceResults);
+							mp.onFaceMeshResults(faceResults, analysisSession.operatePart);
 							mp.onHandsDetectionResults(handResults, analysisSession.currentStep);
 							updateSessionUI();
 						}
@@ -709,6 +698,8 @@ DOM.retryOcrBtn.addEventListener('click', () => {
     
     // Re-enable capture button for retry
     DOM.captureFrameBtn.disabled = false;
+    DOM.flipCameraBtn.disabled = false;
+
     
     utils.addLog('Retry OCR - Capture a new frame', 'info');
 
@@ -746,6 +737,7 @@ DOM.retryPalmBtn.addEventListener('click', () => {
     
     // Re-enable capture button for retry
     DOM.captureFrameBtn.disabled = false;
+    DOM.flipCameraBtn.disabled = false;
     
     utils.addLog('Retry palm detection - Capture a new frame', 'info');
     
