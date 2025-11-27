@@ -139,8 +139,6 @@ export function onFaceMeshResults(results: any, operatePart: string) {
                 checkForeheadRubbing(faceMeshLandmarks, handLandmarks);
             }
         }
-
-        drawFaceMeshOverlay(faceMeshLandmarks, operatePart);
     }
     
 }
