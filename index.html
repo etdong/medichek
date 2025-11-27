@@ -17,7 +17,7 @@
         var process = process || { env: { DEBUG: undefined }, version: '' }; // Basic polyfill for process
     </script>
 
-  <script type="module" crossorigin src="/medichek/assets/index-DohSW2Xv.js"></script>
+  <script type="module" crossorigin src="/medichek/assets/index-DEXPWkXU.js"></script>
   <link rel="stylesheet" crossorigin href="/medichek/assets/index-d-XLSfG4.css">
 </head>
 <body>
@@ -153,35 +153,6 @@
                 <button id="capture-frame" class="btn btn-primary" style="display: none;" data-i18n="button.manualCapture">手动捕获</button>
                 <button id="finish-session" class="btn btn-success" style="display: none;" data-i18n="button.finish">完成</button>
                 <button id="flip-camera" class="btn btn-secondary" style="display: none;" data-i18n="button.flipCamera">切换摄像头</button>
-            </div>
-        </div>
-        
-        <!-- Review/Finish Screen -->
-        <div id="review-screen" class="completion-screen" style="display: none;">
-            <div class="completion-content">
-                <div class="completion-icon">✅</div>
-                <h2 class="completion-title" data-i18n="review.title">会话完成！</h2>
-                <p class="completion-message" data-i18n="review.message">您已完成所有步骤。请选择下一步操作。</p>
-                <div class="completion-details">
-                    <div class="review-summary">
-                        <div class="review-item">
-                            <span class="review-label" data-i18n="review.ocr">产品标签：</span>
-                            <span id="review-ocr-status" class="review-value" data-i18n="review.captured">✓ 已捕获</span>
-                        </div>
-                        <div class="review-item">
-                            <span class="review-label" data-i18n="review.palm">手部检测：</span>
-                            <span id="review-palm-status" class="review-value" data-i18n="review.captured">✓ 已捕获</span>
-                        </div>
-                        <div class="review-item">
-                            <span class="review-label" data-i18n="review.face">面部擦拭：</span>
-                            <span id="review-face-status" class="review-value" data-i18n="review.completed">✓ 已完成</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-actions">
-                    <button id="submit-analysis-btn" class="btn btn-success" data-i18n="review.submit">提交分析</button>
-                    <button id="restart-session-btn" class="btn btn-secondary" data-i18n="review.restart">重新开始会话</button>
-                </div>
             </div>
         </div>
 
