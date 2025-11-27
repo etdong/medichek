@@ -11,11 +11,7 @@ let currentStepRecording: number = 0;
 let camera = null;
 
 let videoDevices: any[] = [];
-// let deviceIndex: number = 0;
 let backCam: any = null;
-// let frontCam: { deviceId: any; } | null = null;
-
-// const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 export let currentPalmStatus: string = 'null'; // 'captured' or null
 
@@ -67,7 +63,7 @@ export function declineRecordingConsent() {
 }
 
 // Camera management
-export async function enableCamera(deviceId: string | null = null) {
+export async function enableCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         utils.addLog('❌ Camera not supported in this browser', 'error');
         return false;
@@ -86,9 +82,6 @@ export async function enableCamera(deviceId: string | null = null) {
         if (videoDevices.length === 0) {
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoDevices = devices.filter((d: any) => d.kind === "videoinput");
-
-            const videoDevicesJson = JSON.stringify(videoDevices);
-            utils.addLog('Video devices JSON:' + videoDevicesJson, 'info');
 
             // Find main back camera by Android naming convention
             if (videoDevices && videoDevices.length > 0) {
@@ -114,6 +107,13 @@ export async function enableCamera(deviceId: string | null = null) {
             audio: false,
         });
         
+        stream.getVideoTracks().forEach(track => {
+            track.applyConstraints({
+                // @ts-ignore
+                focusMode: "continuous"
+            });
+        });
+
         DOM.webcam.srcObject = stream;
         videoStream = stream;
         
@@ -130,7 +130,6 @@ export async function enableCamera(deviceId: string | null = null) {
                 resolve();
             };
         });
-        utils.addLog(`📹 Camera stream started (facing: ${currentFacingMode}, DID: ${deviceId})`, 'info');
         
         return true;
     } catch (err: any) {
