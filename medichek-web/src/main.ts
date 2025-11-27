@@ -134,7 +134,7 @@ function updateSessionUI() {
         DOM.finishSessionBtn.style.display = 'block';
         DOM.finishSessionBtn.disabled = !allAreasRubbed; // Only require time-based completion
 
-        if (stepInstruction) stepInstruction.textContent = t('steps.faceRubbing.title');
+        if (stepInstruction) stepInstruction.textContent = analysisSession.operatePart === '1' ? t('steps.cheekRubbing.title') : t('steps.foreheadRubbing.title');
         if (stepProgress) {
             
             const foreheadPercent = Math.min(100, Math.round((mp.faceRubbingState.forehead.totalTime / mp.RUBBING_DURATION_REQUIRED) * 100));
