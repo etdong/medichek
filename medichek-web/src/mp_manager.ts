@@ -78,9 +78,36 @@ const FACE_COVERAGE_PROXIMITY = 0.02; // Distance threshold for marking a landma
 export const PALM_DETECTION_REQUIRED = 1000; // 1 second in milliseconds
 export const RUBBING_DURATION_REQUIRED = 5000; // 5 seconds in milliseconds
 
+// Define landmarks to exclude (lips, eyes, nose) from visualization
+const excludedLandmarks = new Set([
+    // Lips
+    0, 11, 12, 13, 14, 15, 16, 17, 37, 72, 38, 82, 87, 86, 85, 84, 39, 73, 41, 81, 178, 179, 180, 181, 40, 
+    74, 42, 80, 88, 89, 90, 91, 185, 184, 183, 191, 95, 96, 77, 146, 61, 76, 62, 78, 267, 302, 268, 312, 
+    317, 316, 315, 314, 269, 303, 271, 311, 402, 403, 404, 405, 270, 304, 272, 310, 318, 319, 320, 321, 409, 408, 407, 415,
+    324, 325, 307, 375, 291, 206, 292, 308,
+    // Left Eye
+    130, 247, 30, 29, 27, 28, 56, 190, 243, 112, 26, 22, 23, 24, 110, 25,
+    33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7,
+
+    // Right Eye
+    359, 467, 260, 259, 257, 258, 286, 414, 463, 341, 256, 252, 253, 254, 339, 255,
+    263, 466, 388, 387, 386, 385, 384, 398, 362, 380, 381, 382, 374, 373, 390, 249,
+
+    // Nose
+    19, 94, 2, 125, 141, 241, 242, 97, 238, 20, 99, 79, 60, 219, 218, 239, 166, 59, 75, 235, 240, 64, 98,
+    354, 370, 326, 461, 462, 326, 459, 458, 250, 328, 438, 309, 290, 439, 392, 289, 305, 455, 294, 327, 460,
+
+    // Irises
+    468, 469, 470, 471, 472, 473, 474, 475, 476, 477
+]);
+
+const foreheadLandmarks = [10, 338, 297, 67, 109, 69, 108, 151, 337, 299];
+const leftCheekLandmarks = [280, 346, 347, 330, 425, 411, 352, 427, 434, 367, 416, 433, 376, 345, 366, 401, 435];
+const rightCheekLandmarks = [50, 117, 118, 101, 205, 187, 123, 207, 214, 192, 215, 213, 177, 137, 138, 116, 147];
+
 
 // Face Mesh results callback (tasks-vision API)
-export function onFaceMeshResults(results: any) {
+export function onFaceMeshResults(results: any, operatePart: string) {
     // Initialize canvas context if needed
     if (!canvasCtx) {
         DOM.canvas.width = DOM.webcam.videoWidth;
@@ -104,11 +131,16 @@ export function onFaceMeshResults(results: any) {
         
         // Check face rubbing with all detected hands
         if (handLandmarks && handLandmarks.length > 0) {
-            checkFaceRubbing(faceMeshLandmarks, handLandmarks);
+            if (operatePart === '1') {
+                // Only check cheeks
+                checkCheekRubbing(faceMeshLandmarks, handLandmarks);
+            } else {
+                // Default to check forehead
+                checkForeheadRubbing(faceMeshLandmarks, handLandmarks);
+            }
         }
 
-        // Draw overlay on canvas
-        // drawFaceMeshOverlay(faceMeshLandmarks);
+        drawFaceMeshOverlay(faceMeshLandmarks, operatePart);
     }
     
 }
@@ -145,65 +177,17 @@ export function checkFaceInBounds(faceLandmarks: any) {
 }
 
 // Check if hand is rubbing face areas
-function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]) {
-    // Define face regions using key landmarks for time-based tracking
-    // Face mesh has 468 landmarks
-    
-    // Shift detection areas down by 5% to better cover bottom of face
+// Check if hand is rubbing the forehead
+function checkForeheadRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]) {
     const yOffset = 0.05;
-    
-    // Forehead region: landmarks around 10 (top of face), shifted down
     const foreheadCenter = {
         x: faceLandmarks[10].x,
         y: faceLandmarks[10].y + yOffset
     };
-    
-    // IMPORTANT: Camera is mirrored, so landmarks are flipped from user's perspective
-    // Landmark 50 is on user's right cheek (appears left in mirror)
-    // Landmark 280 is on user's left cheek (appears right in mirror)
-    // We swap them so the naming matches what the user sees in the mirror
-    
-    // Left cheek (as user sees it in mirror): landmark 280, shifted down
-    const leftCheek = {
-        x: faceLandmarks[280].x,
-        y: faceLandmarks[280].y + yOffset
-    };
-    
-    // Right cheek (as user sees it in mirror): landmark 50, shifted down
-    const rightCheek = {
-        x: faceLandmarks[50].x,
-        y: faceLandmarks[50].y + yOffset
-    };
-    
-    const proximityThreshold = 0.10; // Threshold for cheek regions
-    const foreheadProximityThreshold = 0.15; // Wider threshold for forehead region
+    const foreheadProximityThreshold = 0.15;
     const currentTime = Date.now();
-    
-    // Track which areas are being touched by any hand
-    const areasBeingTouched = {
-        forehead: false,
-        leftSide: false,
-        rightSide: false
-    };
-    
-    // Define landmarks to exclude (lips, eyes, nose) from coverage tracking
-    // Based on MediaPipe face mesh connections
-    const excludedLandmarks = new Set([
-        // Lips (FACEMESH_LIPS)
-        0, 13, 14, 17, 37, 39, 40, 61, 78, 80, 81, 82, 84, 87, 88, 91, 95, 146, 178, 181, 185, 191, 267, 269, 270, 291, 308, 310, 311, 312, 314, 317, 318, 321, 324, 375, 402, 405, 409, 415,
-        // Left Eye (FACEMESH_LEFT_EYE)
-        249, 263, 362, 373, 374, 380, 381, 382, 384, 385, 386, 387, 388, 390, 398, 466,
-        // Right Eye (FACEMESH_RIGHT_EYE)
-        7, 33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173, 246,
-        // Left Iris (FACEMESH_LEFT_IRIS)
-        474, 475, 476, 477,
-        // Right Iris (FACEMESH_RIGHT_IRIS)
-        469, 470, 471, 472,
-        // Nose (FACEMESH_NOSE)
-        1, 2, 4, 5, 6, 19, 44, 45, 48, 64, 94, 97, 98, 115, 168, 195, 197, 220, 275, 278, 294, 326, 327, 344, 440
-    ]);
-    
-    // Track holistic face mesh coverage - check all landmarks except excluded ones
+    let foreheadTouched = false;
+
     for (const handLandmarks of allHandLandmarks) {
         // Calculate multiple hand points for better coverage detection
         const handPoints = [
@@ -216,13 +200,9 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
         ];
         
         // Check each face landmark to see if it's covered by any hand point
-        for (let i = 0; i < faceLandmarks.length; i++) {
-            // Skip excluded landmarks (lips, eyes, nose)
-            if (excludedLandmarks.has(i)) {
-                continue;
-            }
+        for (let i = 0; i < foreheadLandmarks.length; i++) {
             
-            const faceLandmark = faceLandmarks[i];
+            const faceLandmark = faceLandmarks[foreheadLandmarks[i]];
             
             // Check distance to each hand point
             for (const handPoint of handPoints) {
@@ -232,7 +212,7 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
                 );
                 
                 if (distance < FACE_COVERAGE_PROXIMITY) {
-                    faceRubbingState.coveredLandmarks.add(i);
+                    faceRubbingState.coveredLandmarks.add(foreheadLandmarks[i]);
                     break; // No need to check other hand points for this landmark
                 }
             }
@@ -240,32 +220,20 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
     }
     
     // Calculate overall coverage percentage (excluding lips, eyes, nose)
-    const totalTrackableLandmarks = faceLandmarks.length - excludedLandmarks.size;
+    const totalTrackableLandmarks = foreheadLandmarks.length;
     const coveredCount = faceRubbingState.coveredLandmarks.size;
     faceRubbingState.totalCoverage = Math.round((coveredCount / totalTrackableLandmarks) * 100);
-    
-    // Check each detected hand for region-based time tracking
+
+
     for (const handLandmarks of allHandLandmarks) {
-        // Use TWO detection points for better accuracy:
-        // 1. Fingertips center - for when rubbing with fingers
-        // 2. Palm center - for when rubbing with palm
-        // Key landmarks:
-        // 0 = wrist
-        // 1, 5, 9, 13, 17 = finger bases (palm area)
-        // 4, 8, 12, 16, 20 = fingertips
-        
         const fingertipsCenter = {
             x: (handLandmarks[4].x + handLandmarks[8].x + handLandmarks[12].x + handLandmarks[16].x + handLandmarks[20].x) / 5,
             y: (handLandmarks[4].y + handLandmarks[8].y + handLandmarks[12].y + handLandmarks[16].y + handLandmarks[20].y) / 5
         };
-        
         const palmCenter = {
             x: (handLandmarks[0].x + handLandmarks[1].x + handLandmarks[5].x + handLandmarks[9].x + handLandmarks[13].x + handLandmarks[17].x) / 6,
             y: (handLandmarks[0].y + handLandmarks[1].y + handLandmarks[5].y + handLandmarks[9].y + handLandmarks[13].y + handLandmarks[17].y) / 6
         };
-        
-        // Check distance to each face region using BOTH fingertips and palm
-        // Use the closer of the two points for better detection
         const fingertipsDistanceToForehead = Math.sqrt(
             Math.pow(fingertipsCenter.x - foreheadCenter.x, 2) + 
             Math.pow(fingertipsCenter.y - foreheadCenter.y, 2)
@@ -276,7 +244,79 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
         );
         const distanceToForehead = Math.min(fingertipsDistanceToForehead, palmDistanceToForehead);
         const foreheadContactPoint = fingertipsDistanceToForehead < palmDistanceToForehead ? fingertipsCenter : palmCenter;
+        if (distanceToForehead < foreheadProximityThreshold) {
+            foreheadTouched = true;
+            trackRubbingMotion('forehead', foreheadContactPoint, currentTime);
+        }
+    }
+    if (!foreheadTouched) {
+        resetRubbingTimer('forehead');
+    }
+}
+
+// Check if hand is rubbing the cheeks
+function checkCheekRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]) {
+    const yOffset = 0.05;
+    const leftCheek = {
+        x: faceLandmarks[280].x,
+        y: faceLandmarks[280].y + yOffset
+    };
+    const rightCheek = {
+        x: faceLandmarks[50].x,
+        y: faceLandmarks[50].y + yOffset
+    };
+    const combinedLandmarks = leftCheekLandmarks.concat(rightCheekLandmarks);
+
+    const proximityThreshold = 0.10;
+    const currentTime = Date.now();
+    let leftTouched = false;
+    let rightTouched = false;
+
+    for (const handLandmarks of allHandLandmarks) {
+        // Calculate multiple hand points for better coverage detection
+        const handPoints = [
+            // Fingertips
+            handLandmarks[4], handLandmarks[8], handLandmarks[12], handLandmarks[16], handLandmarks[20],
+            // Palm points
+            handLandmarks[0], handLandmarks[1], handLandmarks[5], handLandmarks[9], handLandmarks[13], handLandmarks[17],
+            // Middle knuckles for better coverage
+            handLandmarks[2], handLandmarks[6], handLandmarks[10], handLandmarks[14], handLandmarks[18]
+        ];
         
+        // Check each face landmark to see if it's covered by any hand point
+        for (let i = 0; i < combinedLandmarks.length; i++) {
+            
+            const faceLandmark = faceLandmarks[combinedLandmarks[i]];
+            
+            // Check distance to each hand point
+            for (const handPoint of handPoints) {
+                const distance = Math.sqrt(
+                    Math.pow(handPoint.x - faceLandmark.x, 2) +
+                    Math.pow(handPoint.y - faceLandmark.y, 2)
+                );
+                
+                if (distance < FACE_COVERAGE_PROXIMITY) {
+                    faceRubbingState.coveredLandmarks.add(combinedLandmarks[i]);
+                    break; // No need to check other hand points for this landmark
+                }
+            }
+        }
+    }
+    
+    // Calculate overall coverage percentage (excluding lips, eyes, nose)
+    const totalTrackableLandmarks = combinedLandmarks.length;
+    const coveredCount = faceRubbingState.coveredLandmarks.size;
+    faceRubbingState.totalCoverage = Math.round((coveredCount / totalTrackableLandmarks) * 100);
+
+    for (const handLandmarks of allHandLandmarks) {
+        const fingertipsCenter = {
+            x: (handLandmarks[4].x + handLandmarks[8].x + handLandmarks[12].x + handLandmarks[16].x + handLandmarks[20].x) / 5,
+            y: (handLandmarks[4].y + handLandmarks[8].y + handLandmarks[12].y + handLandmarks[16].y + handLandmarks[20].y) / 5
+        };
+        const palmCenter = {
+            x: (handLandmarks[0].x + handLandmarks[1].x + handLandmarks[5].x + handLandmarks[9].x + handLandmarks[13].x + handLandmarks[17].x) / 6,
+            y: (handLandmarks[0].y + handLandmarks[1].y + handLandmarks[5].y + handLandmarks[9].y + handLandmarks[13].y + handLandmarks[17].y) / 6
+        };
         const fingertipsDistanceToLeftCheek = Math.sqrt(
             Math.pow(fingertipsCenter.x - leftCheek.x, 2) + 
             Math.pow(fingertipsCenter.y - leftCheek.y, 2)
@@ -287,7 +327,10 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
         );
         const distanceToLeftCheek = Math.min(fingertipsDistanceToLeftCheek, palmDistanceToLeftCheek);
         const leftCheekContactPoint = fingertipsDistanceToLeftCheek < palmDistanceToLeftCheek ? fingertipsCenter : palmCenter;
-        
+        if (distanceToLeftCheek < proximityThreshold) {
+            leftTouched = true;
+            trackRubbingMotion('leftSide', leftCheekContactPoint, currentTime);
+        }
         const fingertipsDistanceToRightCheek = Math.sqrt(
             Math.pow(fingertipsCenter.x - rightCheek.x, 2) + 
             Math.pow(fingertipsCenter.y - rightCheek.y, 2)
@@ -298,33 +341,15 @@ function checkFaceRubbing(faceLandmarks: string | any[], allHandLandmarks: any[]
         );
         const distanceToRightCheek = Math.min(fingertipsDistanceToRightCheek, palmDistanceToRightCheek);
         const rightCheekContactPoint = fingertipsDistanceToRightCheek < palmDistanceToRightCheek ? fingertipsCenter : palmCenter;
-        
-        // Mark areas being touched by this hand (using whichever point is closer)
-        // Use wider threshold for forehead
-        if (distanceToForehead < foreheadProximityThreshold) {
-            areasBeingTouched.forehead = true;
-            trackRubbingMotion('forehead', foreheadContactPoint, currentTime);
-        }
-        
-        if (distanceToLeftCheek < proximityThreshold) {
-            areasBeingTouched.leftSide = true;
-            trackRubbingMotion('leftSide', leftCheekContactPoint, currentTime);
-        }
-        
         if (distanceToRightCheek < proximityThreshold) {
-            areasBeingTouched.rightSide = true;
+            rightTouched = true;
             trackRubbingMotion('rightSide', rightCheekContactPoint, currentTime);
         }
     }
-    
-    // Reset timers for areas not being touched by any hand
-    if (!areasBeingTouched.forehead) {
-        resetRubbingTimer('forehead');
-    }
-    if (!areasBeingTouched.leftSide) {
+    if (!leftTouched) {
         resetRubbingTimer('leftSide');
     }
-    if (!areasBeingTouched.rightSide) {
+    if (!rightTouched) {
         resetRubbingTimer('rightSide');
     }
 }
@@ -587,7 +612,7 @@ export function onHandsDetectionResults(results: any, currentStep: number) {
 }
 
 // Draw face mesh landmarks and rubbing zones on canvas (Step 3)
-export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
+export function drawFaceMeshOverlay(faceLandmarks: any[] | null, operatePart: string) {
     if (!canvasCtx || !faceLandmarks || !Array.isArray(faceLandmarks)) return;
     
     // Get key facial landmarks for positioning
@@ -600,42 +625,67 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
     const faceWidth = Math.abs(leftTemple.x - rightTemple.x) * DOM.canvas.width;
     const faceHeight = (chin.y - foreheadTop.y) * DOM.canvas.height;
     
-    // Define landmarks to exclude (lips, eyes, nose) from visualization
-    const excludedLandmarks = new Set([
-        // Lips
-        0, 11, 12, 13, 14, 15, 16, 17, 37, 72, 38, 82, 87, 86, 85, 84, 39, 73, 41, 81, 178, 179, 180, 181, 40, 
-        74, 42, 80, 88, 89, 90, 91, 185, 184, 183, 191, 95, 96, 77, 146, 61, 76, 62, 78, 267, 302, 268, 312, 
-        317, 316, 315, 314, 269, 303, 271, 311, 402, 403, 404, 405, 270, 304, 272, 310, 318, 319, 320, 321, 409, 408, 407, 415,
-        324, 325, 307, 375, 291, 206, 292, 308,
-        // Left Eye
-        130, 247, 30, 29, 27, 28, 56, 190, 243, 112, 26, 22, 23, 24, 110, 25,
-        33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7,
-
-        // Right Eye
-        359, 467, 260, 259, 257, 258, 286, 414, 463, 341, 256, 252, 253, 254, 339, 255,
-        263, 466, 388, 387, 386, 385, 384, 398, 362, 380, 381, 382, 374, 373, 390, 249,
-
-        // Nose
-        19, 94, 2, 125, 141, 241, 242, 97, 238, 20, 99, 79, 60, 219, 218, 239, 166, 59, 75, 235, 240, 64, 98,
-        354, 370, 326, 461, 462, 326, 459, 458, 250, 328, 438, 309, 290, 439, 392, 289, 305, 455, 294, 327, 460,
-
-        // Irises
-        468, 469, 470, 471, 472, 473, 474, 475, 476, 477
-    ]);
-    
     // Draw face mesh landmarks manually
-    // Draw uncovered landmarks in gray with higher opacity
-    for (let i = 0; i < faceLandmarks.length; i++) {
-        if (excludedLandmarks.has(i)) continue;
+
+    if (operatePart === '1') {
+        // Only draw cheek landmarks
+        for (const idx of leftCheekLandmarks.concat(rightCheekLandmarks)) {
+            if (idx >= faceLandmarks.length || excludedLandmarks.has(idx)) continue;
+            const landmark = faceLandmarks[idx];
+            const x = landmark.x * DOM.canvas.width;
+            const y = landmark.y * DOM.canvas.height;
+            canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.25)';
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
+            canvasCtx.fill();
+        }
+        // Left cheek ellipse (vertical orientation, shifted down)
+        const leftCheek = faceLandmarks[411];
+        const leftX = leftCheek.x * DOM.canvas.width;
+        const leftY = (leftCheek.y) * DOM.canvas.height;
+        const leftRadiusX = faceWidth * 0.15;
+        const leftRadiusY = faceHeight * 0.20;
         
-        const landmark = faceLandmarks[i];
-        const x = landmark.x * DOM.canvas.width;
-        const y = landmark.y * DOM.canvas.height;
-        
-        canvasCtx.fillStyle = 'rgba(150, 150, 150, 0.25)';
+        canvasCtx.strokeStyle = faceRubbingState.leftSide.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
         canvasCtx.beginPath();
-        canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
-        canvasCtx.fill();
+        canvasCtx.ellipse(leftX, leftY, leftRadiusX, leftRadiusY, 0, 0, 2 * Math.PI);
+        canvasCtx.stroke();
+        
+        // Right cheek ellipse (vertical orientation, shifted down)
+        const rightCheek = faceLandmarks[187];
+        const rightX = rightCheek.x * DOM.canvas.width;
+        const rightY = (rightCheek.y) * DOM.canvas.height;
+        const rightRadiusX = faceWidth * 0.15;
+        const rightRadiusY = faceHeight * 0.20;
+        
+        canvasCtx.strokeStyle = faceRubbingState.rightSide.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
+        canvasCtx.beginPath();
+        canvasCtx.ellipse(rightX, rightY, rightRadiusX, rightRadiusY, 0, 0, 2 * Math.PI);
+        canvasCtx.stroke();
+    } else {
+        // Only draw forehead landmarks
+        for (const idx of foreheadLandmarks) {
+            if (idx >= faceLandmarks.length || excludedLandmarks.has(idx)) continue;
+            const landmark = faceLandmarks[idx];
+            const x = landmark.x * DOM.canvas.width;
+            const y = landmark.y * DOM.canvas.height;
+            canvasCtx.fillStyle = 'rgba(255, 0, 0, 0.45)';
+            canvasCtx.beginPath();
+            canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
+            canvasCtx.fill();
+        }
+        // Forehead ellipse (horizontal orientation, shifted down, wider to match increased detection threshold)
+        const foreheadCenter = faceLandmarks[10];
+        const foreheadX = foreheadCenter.x * DOM.canvas.width;
+        const foreheadY = (foreheadCenter.y + 0.02) * DOM.canvas.height;
+        const foreheadRadiusX = faceWidth * 0.38; // Increased from 0.25 to match 0.15 threshold (50% wider)
+        const foreheadRadiusY = faceHeight * 0.12; // Reverted to original height
+        
+        canvasCtx.strokeStyle = faceRubbingState.forehead.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
+        canvasCtx.lineWidth = 3;
+        canvasCtx.beginPath();
+        canvasCtx.ellipse(foreheadX, foreheadY, foreheadRadiusX, foreheadRadiusY, 0, 0, 2 * Math.PI);
+        canvasCtx.stroke();
     }
     
     // Draw covered landmarks on top with bright color
@@ -646,51 +696,11 @@ export function drawFaceMeshOverlay(faceLandmarks: any[] | null) {
         const x = landmark.x * DOM.canvas.width;
         const y = landmark.y * DOM.canvas.height;
         
-        canvasCtx.fillStyle = 'rgba(0, 255, 100, 0.25)';
+        canvasCtx.fillStyle = 'rgba(0, 255, 102, 1)';
         canvasCtx.beginPath();
         canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
         canvasCtx.fill();
     }
-    
-    // Draw elliptical rubbing time tracking zones
-    const yOffset = 0; // Shift detection areas down by 5%
-    
-    // Forehead ellipse (horizontal orientation, shifted down, wider to match increased detection threshold)
-    const foreheadCenter = faceLandmarks[10];
-    const foreheadX = foreheadCenter.x * DOM.canvas.width;
-    const foreheadY = (foreheadCenter.y + yOffset) * DOM.canvas.height;
-    const foreheadRadiusX = faceWidth * 0.38; // Increased from 0.25 to match 0.15 threshold (50% wider)
-    const foreheadRadiusY = faceHeight * 0.12; // Reverted to original height
-    
-    canvasCtx.strokeStyle = faceRubbingState.forehead.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
-    canvasCtx.lineWidth = 3;
-    canvasCtx.beginPath();
-    canvasCtx.ellipse(foreheadX, foreheadY, foreheadRadiusX, foreheadRadiusY, 0, 0, 2 * Math.PI);
-    canvasCtx.stroke();
-    
-    // Left cheek ellipse (vertical orientation, shifted down)
-    const leftCheek = faceLandmarks[411];
-    const leftX = leftCheek.x * DOM.canvas.width;
-    const leftY = (leftCheek.y + yOffset) * DOM.canvas.height;
-    const leftRadiusX = faceWidth * 0.15;
-    const leftRadiusY = faceHeight * 0.20;
-    
-    canvasCtx.strokeStyle = faceRubbingState.leftSide.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
-    canvasCtx.beginPath();
-    canvasCtx.ellipse(leftX, leftY, leftRadiusX, leftRadiusY, 0, 0, 2 * Math.PI);
-    canvasCtx.stroke();
-    
-    // Right cheek ellipse (vertical orientation, shifted down)
-    const rightCheek = faceLandmarks[187];
-    const rightX = rightCheek.x * DOM.canvas.width;
-    const rightY = (rightCheek.y + yOffset) * DOM.canvas.height;
-    const rightRadiusX = faceWidth * 0.15;
-    const rightRadiusY = faceHeight * 0.20;
-    
-    canvasCtx.strokeStyle = faceRubbingState.rightSide.rubbed ? 'rgba(0, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
-    canvasCtx.beginPath();
-    canvasCtx.ellipse(rightX, rightY, rightRadiusX, rightRadiusY, 0, 0, 2 * Math.PI);
-    canvasCtx.stroke();
 }
 
 // Face detection results callback (tasks-vision API)

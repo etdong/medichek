@@ -1,6 +1,6 @@
 import * as DOM from './dom.js';
 import * as utils from './utils.js';
-import { t } from './translations.js';
+import { t } from './translations.js'
 import Tesseract from 'tesseract.js';
 
 let videoStream: MediaStream | null = null;
@@ -9,12 +9,13 @@ let mediaRecorder: MediaRecorder | null = null;
 let recordedChunks: Blob[] = [];
 let currentStepRecording: number = 0;
 let camera = null;
-let videoDevices: string | any[] | null = null;
-let deviceIndex: number = 0;
-let backCam: { deviceId: any; } | null = null;
-let frontCam: { deviceId: any; } | null = null;
 
-const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+let videoDevices: any[] = [];
+// let deviceIndex: number = 0;
+let backCam: any = null;
+// let frontCam: { deviceId: any; } | null = null;
+
+// const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 export let currentPalmStatus: string = 'null'; // 'captured' or null
 
@@ -46,44 +47,14 @@ export async function startTracking() {
 }
 
 // Handle recording consent acceptance
-export async function acceptRecordingConsent(session_id: string) {
+export function acceptRecordingConsent() {
     // Hide modal
     DOM.recordingConsentModal.style.display = 'none';
     
     recordingConsent = true;
     utils.addLog('✅ Video recording consent granted', 'success');
-    
-    // Initialize client-side session (currentStep starts at 0 for preliminaries)
-    let analysisSession = {
-        sessionId: session_id,
-        startTime: Date.now(),
-        currentStep: 0,  // 0 = preliminaries (camera + face centering)
-        totalSteps: 3,   // Only 3 actual steps now
-        isActive: true,
-        metadata: {
-            userAgent: navigator.userAgent,
-            screenResolution: `${screen.width}x${screen.height}`,
-            source: 'web-client',
-            recordingConsent: true
-        },
-        stepTimings: {
-            step1: { startTime: 0, endTime: 0, duration: 0 },  // OCR Capture
-            step2: { startTime: 0, endTime: 0, duration: 0 },  // Palm Detection
-            step3: { startTime: 0, endTime: 0, duration: 0 }   // Face Rubbing
-        }
-    };
 
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    videoDevices = devices.filter((d) => d.kind === "videoinput");
-
-    console.log(videoDevices)
-
-    if (videoDevices.length > 1) {
-        backCam = videoDevices.find((d) => d.label.toLowerCase().includes('back') && d.label.includes('0')) || null;
-        frontCam = videoDevices.find((d) => d.label.toLowerCase().includes('front')) || null;
-    }
-
-    return analysisSession;
+    return true;
 }
 
 // Handle recording consent decline
@@ -101,30 +72,48 @@ export async function enableCamera(deviceId: string | null = null) {
         utils.addLog('❌ Camera not supported in this browser', 'error');
         return false;
     }
-
+    
     if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
     }
-
-    const constraints = isIOS
-    ? {
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: 1280 },
-          height: { ideal: 1280 }
-        },
-        audio: false,
-      }
-    : {
-        video: deviceId ? { 
-            deviceId: { exact: deviceId },
-        } : true,
-        audio: false,
-      };
     
     try {
+        await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+        });
+
+        if (videoDevices.length === 0) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter((d: any) => d.kind === "videoinput");
+
+            const videoDevicesJson = JSON.stringify(videoDevices);
+            utils.addLog('Video devices JSON:' + videoDevicesJson, 'info');
+
+            // Find main back camera by Android naming convention
+            if (videoDevices && videoDevices.length > 0) {
+                backCam = videoDevices.find((d: any) =>
+                    d.label && d.label.includes('0') && d.label.toLowerCase().includes('back')
+                );
+            }
+            // Store main back camera deviceId for later use
+            if (backCam) {
+                utils.addLog('✅ Main back camera found: ' + backCam.label, 'success');
+            } else {
+                utils.addLog('⚠️ Main back camera not found, will fallback to default environment camera.', 'warning');
+            }
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: currentFacingMode === 'environment' && backCam && backCam.deviceId ? {
+                deviceId: { exact: backCam.deviceId },
+                facingMode: currentFacingMode,
+            } : {
+                facingMode: currentFacingMode,
+            },
+            audio: false,
+        });
         
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         DOM.webcam.srcObject = stream;
         videoStream = stream;
         
@@ -141,46 +130,20 @@ export async function enableCamera(deviceId: string | null = null) {
                 resolve();
             };
         });
-        utils.addLog(`📹 Camera stream started (facing: ${currentFacingMode})`, 'info');
-        utils.addLog(`📹 Device ID: ${deviceId}`, 'success');
-        utils.addLog('📹 Camera enabled successfully!', 'success');
+        utils.addLog(`📹 Camera stream started (facing: ${currentFacingMode}, DID: ${deviceId})`, 'info');
         
         return true;
     } catch (err: any) {
         utils.addLog('❌ Camera access denied: ' + err.message, 'error');
         utils.addLog('⚠️ Cannot proceed without camera access', 'warning');
         return false;
-        
     }
 }
 
+
 export async function flipCamera() {
-    if (videoDevices!.length <= 1) {
-        if (isIOS) {
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            await enableCamera();
-        } else {
-            alert("No other camera available.");
-        }
-        return;
-    }
-
-    if (backCam && frontCam) {
-        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-        const deviceId = currentFacingMode === 'environment' ? backCam.deviceId : frontCam.deviceId;
-        await enableCamera(deviceId);
-        return;
-    }
-
-    deviceIndex = (deviceIndex + 1) % videoDevices!.length;
-    const device = videoDevices![deviceIndex];    
-    if (device.label.includes('back')) {
-        currentFacingMode = 'environment';
-        await enableCamera(videoDevices![deviceIndex].deviceId);
-    } else {
-        currentFacingMode = 'user';
-    }
-    await enableCamera(videoDevices![deviceIndex].deviceId);
+    currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    await enableCamera();
 }
 
 // Video recording functions

@@ -58,7 +58,8 @@ const translations: Record<string, Record<string, string>> = {
         'steps.palm.holdSteady': 'Hold hand steady: {progress}%',
         'steps.palm.showProduct': 'Show the product clearly on hand/palm/fingers. We will automatically scan it',
         'steps.faceRubbing.title': 'Step 3: Rub Face Areas',
-        'steps.faceRubbing.progress': 'Forehead: {forehead} | Left: {left} | Right: {right}',
+        'steps.cheekRubbing.progress': 'Left: {left} | Right: {right}',
+        'steps.foreheadRubbing.progress': 'Forehead: {forehead}',
         'steps.faceRubbing.coverage': 'Face Coverage',
         
         // Session status
@@ -207,7 +208,8 @@ const translations: Record<string, Record<string, string>> = {
         'steps.palm.holdSteady': '保持手部稳定：{progress}%',
         'steps.palm.showProduct': '在手/手掌/手指上清晰展示产品 (自动扫描已激活）',
         'steps.faceRubbing.title': '步骤 3：揉搓面部区域',
-        'steps.faceRubbing.progress': '额头：{forehead} | 左侧：{left} | 右侧：{right}',
+        'steps.cheekRubbing.progress': '左侧：{left} | 右侧：{right}',
+        'steps.foreheadRubbing.progress': '额头：{forehead}',
         'steps.faceRubbing.coverage': '面部覆盖率',
         
         // Session status
